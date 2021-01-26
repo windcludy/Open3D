@@ -47,36 +47,6 @@ namespace geometry {
 /// dtype and device.
 class Image : public Geometry {
 public:
-    /// \enum ColorToIntensityConversionType
-    ///
-    /// \brief Specifies whether R, G, B channels have the same weight when
-    /// converting to intensity. Only used for Image with 3 channels.
-    ///
-    /// When `Weighted` is used R, G, B channels are weighted according to the
-    /// Digital ITU BT.601 standard: I = 0.299 * R + 0.587 * G + 0.114 * B.
-    enum class ColorConversionType {
-        /// R, G, B channels have equal weights.
-        RGBToGrayEqual,
-        /// Weighted R, G, B channels: I = 0.299 * R + 0.587 * G + 0.114 * B.
-        RGBToGrayWeighted,
-    };
-
-    /// \enum FilterType
-    ///
-    /// \brief Specifies the Image filter type.
-    enum class FilterType {
-        /// Gaussian filter of size 3 x 3.
-        Gaussian3,
-        /// Gaussian filter of size 5 x 5.
-        Gaussian5,
-        /// Gaussian filter of size 7 x 7.
-        Gaussian7,
-        /// Sobel filter along X-axis.
-        Sobel3Dx,
-        /// Sobel filter along Y-axis.
-        Sobel3Dy
-    };
-
     /// \brief Constructor for image.
     ///
     /// Row-major storage is used, similar to OpenCV. Use (row, col, channel)
@@ -163,21 +133,17 @@ public:
     /// Retuns the underlying Tensor of the Image.
     core::Tensor AsTensor() const { return data_; }
 
-    /// Default value of scale for datatype conversion with ConvertTo().
-    constexpr static const double SCALE_DEFAULT =
-            -std::numeric_limits<double>::max();
-
-    /// Returns an Image with the specified \p Dtype.
+    /// Returns an Image with the specified \p dtype.
     /// \param dtype The targeted dtype to convert to.
+    /// \param copy If true, a new tensor is always created; if false, the copy
+    /// is avoided when the original tensor already has the targeted dtype.
     /// \param scale Optional scale value. This is 1./255 for UInt8 ->
     /// Float{32,64}, 1./65535 for UInt16 -> Float{32,64} and 1 otherwise
     /// \param offset Optional shift value. Default 0.
-    /// \param copy If true, a new tensor is always created; if false, the copy
-    /// is avoided when the original tensor already has the targeted dtype.
-    Image ConvertTo(core::Dtype dtype,
-                    double scale = SCALE_DEFAULT,
-                    double offset = 0.0,
-                    bool copy = false) const;
+    Image To(core::Dtype dtype,
+             bool copy = false,
+             utility::optional<double> scale = utility::nullopt,
+             double offset = 0.0) const;
 
     /// Function to linearly transform pixel intensities in place.
     /// image = scale * image + offset.
@@ -185,7 +151,10 @@ public:
     /// should be positive for unsigned dtypes.
     /// \param offset Then add this factor to all image pixel values.
     /// \return Reference to self
-    Image &LinearTransform(double scale = 1.0, double offset = 0.0);
+    Image &LinearTransform(double scale = 1.0, double offset = 0.0) {
+        To(GetDtype(), false, scale, offset);
+        return *this;
+    }
 
     /// Return a new image after performing morphological dilation. Supported
     /// datatypes are UInt8, UInt16 and Float32 with {1, 3, 4} channels. An
@@ -197,13 +166,13 @@ public:
     /// Compute min 2D coordinates for the data (always {0, 0}).
     core::Tensor GetMinBound() const {
         return core::Tensor::Zeros({2}, core::Dtype::Int64);
-    };
+    }
 
     /// Compute max 2D coordinates for the data ({rows, cols}).
     core::Tensor GetMaxBound() const {
         return core::Tensor(std::vector<int64_t>{GetRows(), GetCols()}, {2},
                             core::Dtype::Int64);
-    };
+    }
 
     /// Create from a legacy Open3D Image.
     static Image FromLegacyImage(
@@ -215,6 +184,13 @@ public:
 
     /// Text description
     std::string ToString() const;
+
+    /// Do we use IPP ICV for accelerating image processing operations?
+#ifdef WITH_IPPICV
+    static constexpr bool HAVE_IPPICV = true;
+#else
+    static constexpr bool HAVE_IPPICV = false;
+#endif
 
 protected:
     /// Internal data of the Image, represented as a contiguous 3D tensor of

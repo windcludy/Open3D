@@ -31,7 +31,7 @@
 // Required by IPPICV headers, defined here to keep other compile commands clean
 #define ICV_BASE
 #define IW_BUILD
-#include <iw++/iw_image_filter.hpp>
+#include <iw++/iw_core.hpp>
 
 #include "open3d/core/Dtype.h"
 #include "open3d/core/Tensor.h"
@@ -42,25 +42,31 @@ namespace geometry {
 namespace ipp {
 
 inline ::ipp::IppDataType ToIppDataType(core::Dtype dtype) {
-    if (dtype == core::Dtype::UInt8 || dtype == core::Dtype::Bool)
+    if (dtype == core::Dtype::UInt8 || dtype == core::Dtype::Bool) {
         return ipp8u;
-    else if (dtype == core::Dtype::UInt16)
+    } else if (dtype == core::Dtype::UInt16) {
         return ipp16u;
-    else if (dtype == core::Dtype::UInt16)
+    } else if (dtype == core::Dtype::UInt16) {
         return ipp16u;
-    else if (dtype == core::Dtype::Int32)
+    } else if (dtype == core::Dtype::Int32) {
         return ipp32s;
-    else if (dtype == core::Dtype::Int64)
+    } else if (dtype == core::Dtype::Int64) {
         return ipp64s;
-    else if (dtype == core::Dtype::Float32)
+    } else if (dtype == core::Dtype::Float32) {
         return ipp32f;
-    else if (dtype == core::Dtype::Float64)
+    } else if (dtype == core::Dtype::Float64) {
         return ipp64f;
-    else
+    } else {
         return ippUndef;
+    }
 }
 
-void dilate(const open3d::core::Tensor &srcim,
+void To(const core::Tensor &src_im,
+        core::Tensor &dst_im,
+        double scale,
+        double offset);
+
+void Dilate(const open3d::core::Tensor &srcim,
             open3d::core::Tensor &dstim,
             int half_kernel_size);
 
