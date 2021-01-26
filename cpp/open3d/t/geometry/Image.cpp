@@ -59,7 +59,7 @@ Image::Image(int64_t rows,
     if (channels <= 0) {
         utility::LogError("channels must be > 0, but got {}.", channels);
     }
-    data_ = core::Tensor({rows, cols, channels}, dtype, device);
+    Reset(rows, cols, channels, dtype, device);
 }
 
 Image::Image(const core::Tensor &tensor)
@@ -189,7 +189,25 @@ Image Image::Dilate(int half_kernel_size) const {
                 GetDtype().ToString(), GetDevice().ToString());
     }
     return dst_im;
-}
+    
+// Image &Image::Reset(int64_t rows,
+//                     int64_t cols,
+//                     int64_t channels,
+//                     core::Dtype dtype,
+//                     const core::Device &device) {
+//     if (rows < 0) {
+//         utility::LogError("rows must be >= 0, but got {}.", rows);
+//     }
+//     if (cols < 0) {
+//         utility::LogError("cols must be >= 0, but got {}.", cols);
+//     }
+//     if (channels <= 0) {
+//         utility::LogError("channels must be > 0, but got {}.", channels);
+//     }
+
+//     data_ = core::Tensor({rows, cols, channels}, dtype, device);
+//     return *this;
+// }
 
 Image Image::FromLegacyImage(const open3d::geometry::Image &image_legacy,
                              const core::Device &device) {
