@@ -39,6 +39,7 @@ EXAMPLE_CPP(FileDialog                ${CMAKE_PROJECT_NAME} ${TINYFILEDIALOGS_TA
 EXAMPLE_CPP(FileSystem                ${CMAKE_PROJECT_NAME})
 EXAMPLE_CPP(Flann                     ${CMAKE_PROJECT_NAME} ${FLANN_TARGET})
 EXAMPLE_CPP(Image                     ${CMAKE_PROJECT_NAME})
+EXAMPLE_CPP(TensorImage               ${CMAKE_PROJECT_NAME})
 EXAMPLE_CPP(IntegrateRGBD             ${CMAKE_PROJECT_NAME})
 EXAMPLE_CPP(ISSKeypoints              ${CMAKE_PROJECT_NAME})
 EXAMPLE_CPP(LineSet                   ${CMAKE_PROJECT_NAME})

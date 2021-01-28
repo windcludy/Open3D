@@ -28,6 +28,9 @@
 #ifdef BUILD_CUDA_MODULE
 #include "open3d/core/Dtype.h"
 #include "open3d/core/Tensor.h"
+#include <nppdefs.h>
+#include <nppi.h>
+#include "open3d/t/geometry/Image.h"
 
 namespace open3d {
 namespace t {
@@ -37,6 +40,20 @@ namespace npp {
 void Dilate(const open3d::core::Tensor &srcim,
             open3d::core::Tensor &dstim,
             int half_kernel_size);
+
+void Filter(const open3d::core::Tensor &srcim,
+            open3d::core::Tensor &dstim,
+            t::geometry::Image::FilterType filter_type);
+
+void Gaussian(const open3d::core::Tensor &srcim,
+            open3d::core::Tensor &dstim,
+            NppiMaskSize mask_size);
+
+void SobelHorizontal(const open3d::core::Tensor &src_im,
+            open3d::core::Tensor &dst_im);
+
+void SobelVertical(const open3d::core::Tensor &src_im,
+            open3d::core::Tensor &dst_im);
 
 }  // namespace npp
 }  // namespace geometry

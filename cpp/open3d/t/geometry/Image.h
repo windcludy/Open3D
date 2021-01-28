@@ -78,6 +78,28 @@ public:
 
     virtual ~Image() override {}
 
+    /// \enum FilterType
+    ///
+    /// \brief Specifies the Image filter type.
+    enum class FilterType {
+        /// Gaussian filter.
+        Gaussian1x3,
+        Gaussian1x5,
+        Gaussian3x1,
+        Gaussian5x1,
+        Gaussian3x3,
+        Gaussian5x5,
+        Gaussian7x7,
+        Gaussian9x9,
+        Gaussian11x11,
+        Gaussian13x13,
+        Gaussian15x15,
+        /// Horizotal Sobel filter.
+        SobelHorizontal,
+        /// Vertical Sobel filter.
+        SobelVertical,
+    };
+
 public:
     /// Clear image contents by resetting the rows and cols to 0, while
     /// keeping channels, dtype and device unchanged.
@@ -152,6 +174,21 @@ public:
              utility::optional<double> scale = utility::nullopt,
              double offset = 0.0) const;
 
+    /// Function to filter image with pre-defined filtering type.
+    /// \param filter_type pre-defined filtering type (Gaussian, Sobel).
+    Image Filter(Image::FilterType filter_type) const;
+
+public:
+    /// Function to 2x image downsample using simple 2x2 averaging.
+    Image Downsample() const;
+
+    /// Return a new image after performing morphological dilation. Supported
+    /// datatypes are UInt8, UInt16 and Float32 with {1, 3, 4} channels. An
+    /// 8-connected neighborhood is used to create the dilation mask.
+    /// \param half_kernel_size A dilation mask of size 2*half_kernel_size+1 is
+    /// used.
+    Image Dilate(int half_kernel_size = 1) const;
+
     /// Function to linearly transform pixel intensities in place.
     /// image = scale * image + offset.
     /// \param scale First multiply image pixel values with this factor. This
@@ -162,13 +199,6 @@ public:
         To(GetDtype(), false, scale, offset);
         return *this;
     }
-
-    /// Return a new image after performing morphological dilation. Supported
-    /// datatypes are UInt8, UInt16 and Float32 with {1, 3, 4} channels. An
-    /// 8-connected neighborhood is used to create the dilation mask.
-    /// \param half_kernel_size A dilation mask of size 2*half_kernel_size+1 is
-    /// used.
-    Image Dilate(int half_kernel_size = 1) const;
 
     /// Compute min 2D coordinates for the data (always {0, 0}).
     core::Tensor GetMinBound() const {

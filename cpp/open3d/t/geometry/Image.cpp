@@ -189,25 +189,72 @@ Image Image::Dilate(int half_kernel_size) const {
                 GetDtype().ToString(), GetDevice().ToString());
     }
     return dst_im;
-    
-// Image &Image::Reset(int64_t rows,
-//                     int64_t cols,
-//                     int64_t channels,
-//                     core::Dtype dtype,
-//                     const core::Device &device) {
-//     if (rows < 0) {
-//         utility::LogError("rows must be >= 0, but got {}.", rows);
-//     }
-//     if (cols < 0) {
-//         utility::LogError("cols must be >= 0, but got {}.", cols);
-//     }
-//     if (channels <= 0) {
-//         utility::LogError("channels must be > 0, but got {}.", channels);
-//     }
+}
 
-//     data_ = core::Tensor({rows, cols, channels}, dtype, device);
-//     return *this;
-// }
+Image Image::Filter(Image::FilterType type) const {
+    t::geometry::Image output;
+    using supported_t = std::vector<std::pair<core::Dtype, int64_t>>;
+
+    // Check NPP datatype support for each function in documentation:
+    // https://docs.nvidia.com/cuda/npp/group__nppi.html
+    static const supported_t npp_supported{
+            {core::Dtype::Bool, 1},    {core::Dtype::UInt8, 1},
+            {core::Dtype::UInt16, 1},  {core::Dtype::Int32, 1},
+            {core::Dtype::Float32, 1}, {core::Dtype::Bool, 3},
+            {core::Dtype::UInt8, 3},   {core::Dtype::UInt16, 3},
+            {core::Dtype::Int32, 3},   {core::Dtype::Float32, 3},
+            {core::Dtype::Bool, 4},    {core::Dtype::UInt8, 4},
+            {core::Dtype::UInt16, 4},  {core::Dtype::Int32, 4},
+            {core::Dtype::Float32, 4},
+    };
+
+    // Check IPP datatype support for each function in IPP documentation:
+    // https://software.intel.com/content/www/us/en/develop/documentation/ipp-dev-reference/top/volume-2-image-processing.html
+    static const supported_t ipp_supported{
+            {core::Dtype::Bool, 1},    {core::Dtype::UInt8, 1},
+            {core::Dtype::UInt16, 1},  {core::Dtype::Float32, 1},
+            {core::Dtype::Bool, 3},    {core::Dtype::UInt8, 3},
+            {core::Dtype::Float32, 3}, {core::Dtype::Bool, 4},
+            {core::Dtype::UInt8, 4},   {core::Dtype::Float32, 4}};
+
+    Image dst_im;
+    dst_im.data_ = core::Tensor::EmptyLike(data_);
+    if (data_.GetDevice().GetType() == core::Device::DeviceType::CUDA &&
+        std::count(npp_supported.begin(), npp_supported.end(),
+                   std::make_pair(GetDtype(), GetChannels())) > 0) {
+        CUDA_CALL(npp::Filter, data_, dst_im.data_, type);
+    } else if (HAVE_IPPICV &&
+               data_.GetDevice().GetType() == core::Device::DeviceType::CPU &&
+               std::count(ipp_supported.begin(), ipp_supported.end(),
+                          std::make_pair(GetDtype(), GetChannels())) > 0) {
+        // IPP_CALL(ipp::Gaussian, data_, dst_im.data_, half_kernel_size);
+    } else {
+        utility::LogError(
+                "Dilate with data type {} on device {} is not implemented!",
+                GetDtype().ToString(), GetDevice().ToString());
+    }
+    return dst_im;
+}
+
+    
+Image &Image::Reset(int64_t rows,
+                    int64_t cols,
+                    int64_t channels,
+                    core::Dtype dtype,
+                    const core::Device &device) {
+    if (rows < 0) {
+        utility::LogError("rows must be >= 0, but got {}.", rows);
+    }
+    if (cols < 0) {
+        utility::LogError("cols must be >= 0, but got {}.", cols);
+    }
+    if (channels <= 0) {
+        utility::LogError("channels must be > 0, but got {}.", channels);
+    }
+
+    data_ = core::Tensor({rows, cols, channels}, dtype, device);
+    return *this;
+}
 
 Image Image::FromLegacyImage(const open3d::geometry::Image &image_legacy,
                              const core::Device &device) {

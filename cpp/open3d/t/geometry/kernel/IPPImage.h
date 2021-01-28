@@ -70,6 +70,10 @@ void Dilate(const open3d::core::Tensor &srcim,
             open3d::core::Tensor &dstim,
             int half_kernel_size);
 
+void Gaussian(const open3d::core::Tensor &srcim,
+            open3d::core::Tensor &dstim,
+            int half_kernel_size);
+
 }  // namespace ipp
 }  // namespace geometry
 }  // namespace t
