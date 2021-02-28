@@ -65,6 +65,8 @@ ExternalProject_Add(
         -DWITH_SIMD=${WITH_SIMD}
         -DCMAKE_INSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR}/libjpeg-turbo-install
         -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+        -DCMAKE_SYSTEM_PROCESSOR=aarch64
+        -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
 )
 
 # If MSVC, the OUTPUT_NAME was set to turbojpeg-static

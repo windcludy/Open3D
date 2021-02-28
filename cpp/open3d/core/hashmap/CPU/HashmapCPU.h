@@ -190,7 +190,7 @@ int64_t CPUHashmap<Hash, KeyEq>::GetActiveIndices(addr_t* output_indices) {
     int64_t count = impl_->size();
     int64_t i = 0;
     for (auto iter = impl_->begin(); iter != impl_->end(); ++iter, ++i) {
-        output_indices[i] = static_cast<int64_t>(iter->second);
+        output_indices[i] = static_cast<addr_t>(iter->second);
     }
 
     return count;

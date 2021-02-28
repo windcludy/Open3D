@@ -24,7 +24,10 @@ add_subdirectory(io)
 add_subdirectory(ml)
 add_subdirectory(pipelines)
 add_subdirectory(utility)
-add_subdirectory(visualization)
+if (NOT IOS)
+    add_subdirectory(visualization)
+    set(VISUALIZATION_OBJECTS "$<TARGET_OBJECTS:visualization>")
+endif()
 if (BUILD_GUI)
     add_subdirectory(visualization/gui)
     set(GUI_OBJECTS "$<TARGET_OBJECTS:GUI>")
@@ -57,7 +60,7 @@ add_library(${CMAKE_PROJECT_NAME}
     $<TARGET_OBJECTS:pipelines>
     $<TARGET_OBJECTS:tpipelines>
     $<TARGET_OBJECTS:utility>
-    $<TARGET_OBJECTS:visualization>
+    ${VISUALIZATION_OBJECTS}
     ${GUI_OBJECTS}
 )
 open3d_show_and_abort_on_warning(${PROJECT_NAME})

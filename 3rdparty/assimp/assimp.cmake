@@ -24,6 +24,8 @@ ExternalProject_Add(
     UPDATE_COMMAND ""
     CMAKE_ARGS
         -DCMAKE_BUILD_TYPE=${ASSIMP_BUILD_TYPE}
+        -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
+        -DCMAKE_OSX_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET}
         -DBUILD_SHARED_LIBS=OFF
         -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
         -DCMAKE_POSITION_INDEPENDENT_CODE=ON
@@ -43,8 +45,8 @@ ExternalProject_Get_Property(ext_assimp SOURCE_DIR)
 ExternalProject_Add_Step(ext_assimp patch-copy
   COMMAND ${CMAKE_COMMAND} -E copy ${ASSIMP_PATCH_FILES} ${SOURCE_DIR}/code/Obj
   COMMAND ${CMAKE_COMMAND} -E echo "Copying patch files for Obj loader into assimp source"
-  DEPENDEES download
-  DEPENDERS update)
+  DEPENDEES download)
+  #DEPENDERS update)
 set(ASSIMP_INCLUDE_DIR ${INSTALL_DIR}/include/)
 set(ASSIMP_LIB_DIR ${INSTALL_DIR}/lib)
 if (UNIX OR APPLE)

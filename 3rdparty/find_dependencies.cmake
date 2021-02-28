@@ -373,6 +373,7 @@ build_3rdparty_library(3rdparty_nanoflann DIRECTORY nanoflann INCLUDE_DIRS inclu
 set(NANOFLANN_TARGET "3rdparty_nanoflann")
 list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS "${NANOFLANN_TARGET}")
 
+if(NOT IOS)
 # GLEW
 if(USE_SYSTEM_GLEW)
     find_package(GLEW)
@@ -454,6 +455,7 @@ if(NOT USE_SYSTEM_GLFW)
 endif()
 list(APPEND Open3D_3RDPARTY_HEADER_TARGETS "${GLFW_TARGET}")
 list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS "${GLFW_TARGET}")
+endif()
 
 # TurboJPEG
 if(USE_SYSTEM_JPEG AND BUILD_AZURE_KINECT)
@@ -603,6 +605,7 @@ set(RPLY_TARGET "3rdparty_rply")
 list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS "${RPLY_TARGET}")
 
 # tinyfiledialogs
+if(NOT IOS)
 build_3rdparty_library(3rdparty_tinyfiledialogs
     DIRECTORY tinyfiledialogs
     SOURCES include/tinyfiledialogs/tinyfiledialogs.c
@@ -610,6 +613,7 @@ build_3rdparty_library(3rdparty_tinyfiledialogs
 )
 set(TINYFILEDIALOGS_TARGET "3rdparty_tinyfiledialogs")
 list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS "${TINYFILEDIALOGS_TARGET}")
+endif()
 
 # tinygltf
 if(USE_SYSTEM_TINYGLTF)
@@ -1032,7 +1036,7 @@ if(USE_BLAS)
             list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS "${CUDA_cusolver_LIBRARY}")
             list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS "${CUDA_CUBLAS_LIBRARIES}")
         endif()
-    else()
+    elseif(NOT IOS)
         # Compile OpenBLAS/Lapack from source. Install gfortran on Ubuntu first.
         message(STATUS "Building OpenBLAS with LAPACK from source")
         set(BLAS_BUILD_FROM_SOURCE ON)

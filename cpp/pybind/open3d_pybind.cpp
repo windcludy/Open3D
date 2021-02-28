@@ -39,7 +39,13 @@
 
 namespace open3d {
 
+namespace docstring {
+void init_static_property();
+}
+
 PYBIND11_MODULE(pybind, m) {
+    open3d::docstring::init_static_property();
+    
     open3d::utility::Logger::i().print_fcn_ = [](const std::string& msg) {
         py::gil_scoped_acquire acquire;
         py::print(msg);

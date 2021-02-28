@@ -10,8 +10,13 @@ else()
     cmake_minimum_required(VERSION 3.17)
 endif()
 
+if(IOS)
+set (CMAKE_OSX_DEPLOYMENT_TARGET "12.3" CACHE STRING
+    "Minimum iOS version" FORCE)
+else()
 set (CMAKE_OSX_DEPLOYMENT_TARGET "10.14" CACHE STRING
     "Minimum OS X deployment version" FORCE)
+endif()
 
 # Open3D build options
 option(BUILD_SHARED_LIBS          "Build shared libraries"                   OFF)
@@ -173,7 +178,7 @@ if(UNIX AND NOT APPLE)
 endif()
 
 # Set BLAS/LAPACK library preference.
-if(LINUX_AARCH64)
+if(LINUX_AARCH64 OR IOS)
     if(NOT USE_BLAS)
         set(USE_BLAS ON)
         message(WARNING "ARM CPU detected, setting USE_BLAS=ON.")

@@ -52,6 +52,10 @@ if (NOT BUILD_GUI)
         "${CMAKE_CURRENT_SOURCE_DIR}/visualization/o3dvisualizer.cpp")
 endif()
 
+if (IOS)
+    list(FILTER PY_ALL_SOURCE_FILES EXCLUDE REGEX "${CMAKE_CURRENT_SOURCE_DIR}/visualization/.*")
+endif()
+
 if (NOT BUILD_AZURE_KINECT)
     list(REMOVE_ITEM PY_ALL_SOURCE_FILES
         "${CMAKE_CURRENT_SOURCE_DIR}/io/sensor.cpp")

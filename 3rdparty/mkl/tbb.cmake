@@ -44,4 +44,6 @@ ExternalProject_Add(
         -DTBB_BUILD_STATIC=ON
         -DTBB_BUILD_TESTS=OFF
         -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+        -DCMAKE_CXX_FLAGS=-stdlib=libc++
+        -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
 )
