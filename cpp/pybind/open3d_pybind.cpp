@@ -35,7 +35,10 @@
 #include "pybind/pipelines/pipelines.h"
 #include "pybind/t/t.h"
 #include "pybind/utility/utility.h"
+#include <TargetConditionals.h>
+#if !TARGET_OS_IOS
 #include "pybind/visualization/visualization.h"
+#endif
 
 namespace open3d {
 
@@ -70,7 +73,9 @@ PYBIND11_MODULE(pybind, m) {
     ml::pybind_ml(m);
     io::pybind_io(m);
     pipelines::pybind_pipelines(m);
+#if !TARGET_OS_IOS
     visualization::pybind_visualization(m);
+#endif
 }
 
 }  // namespace open3d
