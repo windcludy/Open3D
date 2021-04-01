@@ -1,6 +1,34 @@
 XCCONFIG=ios/override.xcconfig
 
-#JPEG
+
+# Open3D
+
+xcodebuild -project build/Open3D.xcodeproj -target install -configuration Release -xcconfig $XCCONFIG
+mv build/lib/Release/Python/cpu/*.so build/lib/Release/Python/cpu/pybind.a
+
+rm -rf build/lib/iOS
+mv build/lib/Release build/lib/iOS
+
+xcodebuild -project build/Open3D.xcodeproj -target pybind -configuration Release -sdk iphonesimulator -xcconfig $XCCONFIG
+mv build/lib/Release/Python/cpu/*.so build/lib/Release/Python/cpu/pybind.a
+
+cd build/lib/Release
+
+inc=../../../ios/install/include
+
+for a in *.a Python/cpu/*.a
+do
+  rm -rf $a.xcframework
+  case $a in
+    libOpen3D.a)
+      xcodebuild -create-xcframework -library $a -headers $inc -library ../iOS/$a -headers $inc -output $a.xcframework ;;
+    *)
+      xcodebuild -create-xcframework -library $a -library ../iOS/$a -output $a.xcframework ;;
+  esac
+done
+
+
+# JPEG
 
 xcodebuild -project build/turbojpeg/src/ext_turbojpeg-build/libjpeg-turbo.xcodeproj -target turbojpeg-static -configuration Release -sdk iphoneos -xcconfig $XCCONFIG
 xcodebuild -project build/turbojpeg/src/ext_turbojpeg-build/libjpeg-turbo.xcodeproj -target turbojpeg-static -configuration Release -sdk iphonesimulator -xcconfig $XCCONFIG
@@ -57,30 +85,3 @@ xcodebuild -create-xcframework \
   -library build/assimp/src/ext_assimp-build/contrib/irrXML/Release-iphoneos/libIrrXML.a \
   -library build/assimp/src/ext_assimp-build/contrib/irrXML/Release-iphonesimulator/libIrrXML.a \
   -output build/assimp/lib/IrrXML.xcframework
-
-
-# Open3D
-
-xcodebuild -project build/Open3D.xcodeproj -target install -configuration Release -xcconfig $XCCONFIG
-mv build/lib/Release/Python/cpu/*.so build/lib/Release/Python/cpu/pybind.a
-
-rm -rf build/lib/iOS
-mv build/lib/Release build/lib/iOS
-
-xcodebuild -project build/Open3D.xcodeproj -target pybind -configuration Release -sdk iphonesimulator -xcconfig $XCCONFIG
-mv build/lib/Release/Python/cpu/*.so build/lib/Release/Python/cpu/pybind.a
-
-cd build/lib/Release
-
-inc=../../../ios/install/include
-
-for a in *.a Python/cpu/*.a
-do
-  rm -rf $a.xcframework
-  case $a in
-    libOpen3D.a)
-      xcodebuild -create-xcframework -library $a -headers $inc -library ../iOS/$a -headers $inc -output $a.xcframework ;;
-    *)
-      xcodebuild -create-xcframework -library $a -library ../iOS/$a -output $a.xcframework ;;
-  esac
-done
