@@ -27,6 +27,8 @@ do
   esac
 done
 
+cd -
+
 
 # JPEG
 
