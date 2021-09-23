@@ -67,6 +67,9 @@ if __name__ == '__main__':
                         default=0.04,
                         help='SDF truncation threshold.')
     parser.add_argument('--device', type=str, default='cuda:0')
+    parser.add_argument('--raycast',
+                        action='store_true',
+                        help='visualize ray casting every 100 frames')
     args = parser.parse_args()
     print(args)
 
@@ -121,9 +124,26 @@ if __name__ == '__main__':
         start = time.time()
         volume.integrate(depth, rgb, intrinsic, extrinsic, args.depth_scale,
                          args.max_depth)
+        if args.raycast and i % 100 == 0:
+            colormap_code = int(o3d.t.geometry.SurfaceMaskCode.ColorMap)
+            vertexmap_code = int(o3d.t.geometry.SurfaceMaskCode.VertexMap)
+
+            result = volume.raycast(intrinsic, extrinsic, depth.columns,
+                                    depth.rows,
+                                    args.depth_scale, 0.1, args.max_depth,
+                                    min(i * 1.0,
+                                        3.0), colormap_code | vertexmap_code)
+            vertexmap = result[o3d.t.geometry.SurfaceMaskCode.VertexMap]
+            colormap = result[o3d.t.geometry.SurfaceMaskCode.ColorMap]
+
+            o3d.visualization.draw_geometries(
+                [o3d.t.geometry.Image(vertexmap).to_legacy_image()])
+            o3d.visualization.draw_geometries(
+                [o3d.t.geometry.Image(colormap).to_legacy_image()])
+
         end = time.time()
         print('Integration {:04d}/{:04d} takes {:.3f} ms'.format(
             i, n_files, (end - start) * 1000.0))
 
-    mesh = volume.extract_surface_mesh().to_legacy_triangle_mesh()
+    mesh = volume.cpu().extract_surface_mesh().to_legacy_triangle_mesh()
     o3d.io.write_triangle_mesh(args.mesh_name, mesh, False, True)

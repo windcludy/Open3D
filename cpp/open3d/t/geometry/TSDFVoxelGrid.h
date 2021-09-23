@@ -46,9 +46,9 @@ namespace geometry {
 
 /// Scalable voxel grid specialized for TSDF integration.
 /// The 3D space is organized in such a way:
-/// Space is first coarsely divided into \blocks that can be indexed by 3D
+/// Space is first coarsely divided into blocks that can be indexed by 3D
 /// coordinates.
-/// Each \block is then further divided into \voxels as a Tensor of shape
+/// Each block is then further divided into voxels as a Tensor of shape
 /// (resolution, resolution, resolution, channel).
 /// For pure geometric TSDF voxels, channel = 2 (TSDF + weight).
 /// For colored TSDF voxels, channel = 5 (TSDF + weight + color).
@@ -65,7 +65,9 @@ public:
                   float sdf_trunc = 0.04,         /*  in meter  */
                   int64_t block_resolution = 16, /*  block Tensor resolution  */
                   int64_t block_count = 1000,
-                  const core::Device &device = core::Device("CPU:0"));
+                  const core::Device &device = core::Device("CPU:0"),
+                  const core::HashmapBackend &backend =
+                          core::HashmapBackend::Default);
 
     ~TSDFVoxelGrid(){};
 
@@ -73,41 +75,98 @@ public:
     void Integrate(const Image &depth,
                    const core::Tensor &intrinsics,
                    const core::Tensor &extrinsics,
-                   double depth_scale = 1000.0,
-                   double depth_max = 3.0);
+                   float depth_scale = 1000.0f,
+                   float depth_max = 3.0f);
 
     /// RGB-D integration.
     void Integrate(const Image &depth,
                    const Image &color,
                    const core::Tensor &intrinsics,
                    const core::Tensor &extrinsics,
-                   double depth_scale = 1000.0,
-                   double depth_max = 3.0);
+                   float depth_scale = 1000.0f,
+                   float depth_max = 3.0f);
+
+    enum SurfaceMaskCode {
+        None = 0,
+        VertexMap = (1 << 0),
+        DepthMap = (1 << 1),
+        ColorMap = (1 << 2),
+        NormalMap = (1 << 3),
+        RangeMap = (1 << 4)
+    };
+    /// Use volumetric ray casting to obtain vertex and color maps, mainly for
+    /// dense visual odometry.
+    /// intrinsics and extrinsics defines the camera properties for image
+    /// generation. width and height defines the image size.
+    /// Note: vertex map is
+    /// interpolated along the ray, but color map is not trilinearly
+    /// interpolated due to performance requirements. Colormap is only used for
+    /// a reference now.
+    std::unordered_map<SurfaceMaskCode, core::Tensor> RayCast(
+            const core::Tensor &intrinsics,
+            const core::Tensor &extrinsics,
+            int width,
+            int height,
+            float depth_scale = 1000.0f,
+            float depth_min = 0.1f,
+            float depth_max = 3.0f,
+            float weight_threshold = 3.0f,
+            int ray_cast_mask = SurfaceMaskCode::DepthMap |
+                                SurfaceMaskCode::ColorMap);
 
     /// Extract point cloud near iso-surfaces.
-    PointCloud ExtractSurfacePoints();
+    /// Weight threshold is used to filter outliers. By default we use 3.0,
+    /// where we assume a reliable surface point comes from the fusion of at
+    /// least 3 viewpoints. Use as low as 0.0 to accept all the possible
+    /// observations.
+    PointCloud ExtractSurfacePoints(
+            int estimate_number = -1,
+            float weight_threshold = 3.0f,
+            int surface_mask = SurfaceMaskCode::VertexMap |
+                               SurfaceMaskCode::ColorMap);
 
     /// Extract mesh near iso-surfaces with Marching Cubes.
-    TriangleMesh ExtractSurfaceMesh();
+    /// Weight threshold is used to filter outliers. By default we use 3.0,
+    /// where we assume a reliable surface point comes from the fusion of at
+    /// least 3 viewpoints. Use as low as 0.0 to accept all the possible
+    /// observations.
+    TriangleMesh ExtractSurfaceMesh(
+            int estimate_vertices = -1,
+            float weight_threshold = 3.0f,
+            int surface_mask = SurfaceMaskCode::VertexMap |
+                               SurfaceMaskCode::NormalMap |
+                               SurfaceMaskCode::ColorMap);
 
-    /// Copy TSDFVoxelGrid to the target device.
-    TSDFVoxelGrid Copy(const core::Device &device);
+    /// Convert TSDFVoxelGrid to the target device.
+    /// \param device The targeted device to convert to.
+    /// \param copy If true, a new TSDFVoxelGrid is always created; if false,
+    /// the copy is avoided when the original TSDFVoxelGrid is already on the
+    /// targeted device.
+    TSDFVoxelGrid To(const core::Device &device, bool copy = false) const;
+
+    /// Clone TSDFVoxelGrid on the same device.
+    TSDFVoxelGrid Clone() const { return To(GetDevice(), true); }
 
     /// Copy TSDFVoxelGrid to CPU.
-    TSDFVoxelGrid CPU();
+    TSDFVoxelGrid CPU() const { return To(core::Device("CPU:0"), false); }
 
     /// Copy TSDFVoxelGrid to CUDA.
-    TSDFVoxelGrid CUDA(int device_id = 0);
+    TSDFVoxelGrid CUDA(int device_id = 0) const {
+        return To(core::Device(core::Device::DeviceType::CUDA, device_id),
+                  false);
+    }
 
-    core::Device GetDevice() { return device_; }
+    core::Device GetDevice() const { return device_; }
+
+    std::shared_ptr<core::Hashmap> GetBlockHashmap() { return block_hashmap_; }
 
 protected:
-    /// Return  \addrs and \masks for radius (3) neighbor entries.
+    /// Return  addrs and masks for radius (3) neighbor entries.
     /// We first find all active entries in the hashmap with there coordinates.
     /// We then query these coordinates and their 3^3 neighbors.
-    /// \addrs_nb: indexer used for the internal hashmap to access voxel block
+    /// addrs_nb: indexer used for the internal hashmap to access voxel block
     /// coordinates in the 3^3 neighbors.
-    /// \masks_nb: flag used for hashmap to indicate whether a query is a
+    /// masks_nb: flag used for hashmap to indicate whether a query is a
     /// success.
     /// Currently we preserve a dense output (27 x active_entries) without
     /// compression / reduction.
@@ -122,7 +181,12 @@ protected:
 
     core::Device device_ = core::Device("CPU:0");
 
+    // Global hashmap
     std::shared_ptr<core::Hashmap> block_hashmap_;
+
+    // Local hashmap for the `unique` operation of input points
+    std::shared_ptr<core::Hashmap> point_hashmap_;
+    core::Tensor active_block_coords_;
 
     std::unordered_map<std::string, core::Dtype> attr_dtype_map_;
 };

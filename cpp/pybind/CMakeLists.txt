@@ -2,19 +2,6 @@ if (NOT PYTHON_EXECUTABLE)
     message(FATAL_ERROR "PYTHON_EXECUTABLE should be set in top level CMakeLists.txt")
 endif()
 
-# Detect whether `npm` is installed. Jupyter support will only be enabled if
-# `npm` is found.
-find_program(NPM "npm")
-if (BUILD_JUPYTER_EXTENSION)
-    if (NOT NPM)
-        message(WARNING "Cannot find npm. Jupyter support will be disabled.")
-        set(BUILD_JUPYTER_EXTENSION OFF)
-    else()
-        message(STATUS "npm found at: ${NPM}. Jupyter support will be enabled.")
-    endif()
-endif()
-message(STATUS "BUILD_JUPYTER_EXTENSION is set to ${BUILD_JUPYTER_EXTENSION}")
-
 # We need to get python version to configure some meta files
 execute_process(
     COMMAND ${PYTHON_EXECUTABLE} -c "import sys; print('%d.%d' % (sys.version_info.major, sys.version_info.minor))"
@@ -41,30 +28,98 @@ endif()
 
 set(PACKAGE_NAME pybind)
 
-file(GLOB_RECURSE PY_ALL_SOURCE_FILES "*.cpp")
+set(PY_ALL_SOURCE_FILES
+    camera/camera.cpp
+    core/hashmap.cpp
+    core/tensor_converter.cpp
+    core/linalg.cpp
+    core/kernel.cpp
+    core/core.cpp
+    core/tensor_accessor.cpp
+    core/blob.cpp
+    core/device.cpp
+    core/size_vector.cpp
+    core/cuda_utils.cpp
+    core/tensor.cpp
+    core/scalar.cpp
+    core/nns/nearest_neighbor_search.cpp
+    core/dtype.cpp
+    docstring.cpp
+    geometry/pointcloud.cpp
+    geometry/trianglemesh.cpp
+    geometry/voxelgrid.cpp
+    geometry/tetramesh.cpp
+    geometry/geometry.cpp
+    geometry/image.cpp
+    geometry/keypoint.cpp
+    geometry/kdtreeflann.cpp
+    geometry/lineset.cpp
+    geometry/boundingvolume.cpp
+    geometry/octree.cpp
+    geometry/meshbase.cpp
+    geometry/halfedgetrianglemesh.cpp
+    io/io.cpp
+    io/class_io.cpp
+    ml/ml.cpp
+    ml/contrib/contrib.cpp
+    ml/contrib/iou.cpp
+    ml/contrib/contrib_subsample.cpp
+    ml/contrib/contrib_nns.cpp
+    open3d_pybind.cpp
+    pipelines/registration/registration.cpp
+    pipelines/registration/global_optimization.cpp
+    pipelines/registration/robust_kernels.cpp
+    pipelines/registration/feature.cpp
+    pipelines/pipelines.cpp
+    pipelines/integration/integration.cpp
+    pipelines/color_map/color_map.cpp
+    pipelines/odometry/odometry.cpp
+    pybind_utils.cpp
+    t/t.cpp
+    t/io/io.cpp
+    t/io/sensor.cpp
+    t/io/class_io.cpp
+    t/geometry/pointcloud.cpp
+    t/geometry/trianglemesh.cpp
+    t/geometry/geometry.cpp
+    t/geometry/image.cpp
+    t/geometry/tensormap.cpp
+    t/geometry/tsdf_voxelgrid.cpp
+    t/pipelines/pipelines.cpp
+    t/pipelines/slac/slac.cpp
+    t/pipelines/odometry/odometry.cpp
+    t/pipelines/registration/registration.cpp
+    utility/console.cpp
+    utility/eigen.cpp
+    utility/utility.cpp
+    visualization/visualizer.cpp
+    visualization/visualization.cpp
+    visualization/renderoption.cpp
+    visualization/viewcontrol.cpp
+    visualization/utility.cpp
+    )
 
-if (NOT BUILD_GUI)
-    list(REMOVE_ITEM PY_ALL_SOURCE_FILES
-        "${CMAKE_CURRENT_SOURCE_DIR}/visualization/gui/gui.cpp")
-    list(REMOVE_ITEM PY_ALL_SOURCE_FILES
-        "${CMAKE_CURRENT_SOURCE_DIR}/visualization/rendering/rendering.cpp")
-    list(REMOVE_ITEM PY_ALL_SOURCE_FILES
-        "${CMAKE_CURRENT_SOURCE_DIR}/visualization/o3dvisualizer.cpp")
-endif()
-
-if (IOS)
-    list(FILTER PY_ALL_SOURCE_FILES EXCLUDE REGEX "${CMAKE_CURRENT_SOURCE_DIR}/visualization/.*")
-endif()
-
-if (NOT BUILD_AZURE_KINECT)
-    list(REMOVE_ITEM PY_ALL_SOURCE_FILES
-        "${CMAKE_CURRENT_SOURCE_DIR}/io/sensor.cpp")
-endif()
-
-if (NOT BUILD_RPC_INTERFACE)
-    list(REMOVE_ITEM PY_ALL_SOURCE_FILES
-        "${CMAKE_CURRENT_SOURCE_DIR}/io/rpc.cpp"
+if (BUILD_GUI)
+    list(APPEND PY_ALL_SOURCE_FILES
+        visualization/gui/gui.cpp
+        visualization/gui/events.cpp
+        visualization/rendering/rendering.cpp
+        visualization/o3dvisualizer.cpp
         )
+endif()
+
+if (BUILD_WEBRTC)
+    list(APPEND PY_ALL_SOURCE_FILES
+        visualization/webrtc_server/webrtc_window_system.cpp
+    )
+endif()
+
+if (BUILD_AZURE_KINECT)
+    list(APPEND PY_ALL_SOURCE_FILES io/sensor.cpp)
+endif()
+
+if (BUILD_RPC_INTERFACE)
+    list(APPEND PY_ALL_SOURCE_FILES io/rpc.cpp)
 endif()
 
 # NO_EXTRAS disables LTO which causes problems during link with nvcc 9.x
@@ -202,12 +257,17 @@ if ( BUNDLE_OPEN3D_ML )
 endif ()
 
 configure_file("_build_config.py.in"
-               "${CMAKE_BINARY_DIR}/lib/_build_config.py")
+               "${CMAKE_BINARY_DIR}/lib/_build_config.py.in")
+file(GENERATE
+    OUTPUT "${PYTHON_COMPILED_MODULE_DIR}/_build_config.py"
+    INPUT "${CMAKE_BINARY_DIR}/lib/_build_config.py.in"
+    )
 
 add_custom_target(python-package
     COMMAND ${CMAKE_COMMAND}
             -DPYTHON_PACKAGE_SRC_DIR=${PYTHON_PACKAGE_SRC_DIR}
             -DPYTHON_PACKAGE_DST_DIR=${PYTHON_PACKAGE_DST_DIR}
+            -DPYTHON_COMPILED_MODULE_DIR=${PYTHON_COMPILED_MODULE_DIR}
             -DPYTHON_VERSION=${PYTHON_VERSION}
             "-DCOMPILED_MODULE_PATH_LIST=${COMPILED_MODULE_PATH_LIST}"
             "-DPYTHON_EXTRA_LIBRARIES=${PYTHON_EXTRA_LIBRARIES}"
@@ -244,6 +304,7 @@ add_custom_target(pip-package
 add_custom_target(install-pip-package
     COMMAND ${CMAKE_COMMAND}
             -DPYTHON_PACKAGE_DST_DIR=${PYTHON_PACKAGE_DST_DIR}
+            -DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE}
             -P ${CMAKE_CURRENT_SOURCE_DIR}/make_install_pip_package.cmake
     DEPENDS pip-package
 )
@@ -266,7 +327,7 @@ add_custom_target(install-python-package
 #     1) `make install-pip-package` works in conda environment for local build
 #     2) `make conda-package` is mainly for internal use to distribute conda
 add_custom_target(conda-package
-    COMMAND conda-build conda_meta --output-folder conda_package
+    COMMAND conda-build conda_meta --channel conda-forge --output-folder conda_package
     COMMAND echo "conda package created at ${PYTHON_PACKAGE_DST_DIR}/conda_package"
     WORKING_DIRECTORY ${PYTHON_PACKAGE_DST_DIR}
     DEPENDS python-package
@@ -277,7 +338,7 @@ add_custom_target(conda-package
 # the previous one will be deleted.
 add_custom_target(pip-conda-package
     COMMAND ${PYTHON_EXECUTABLE} setup.py bdist_wheel --dist-dir pip_package
-    COMMAND conda-build conda_meta --output-folder conda_package
+    COMMAND conda-build conda_meta --channel conda-forge --output-folder conda_package
     COMMAND echo "pip wheel created at ${PYTHON_PACKAGE_DST_DIR}/pip_package"
     COMMAND echo "conda package created at ${PYTHON_PACKAGE_DST_DIR}/conda_package"
     WORKING_DIRECTORY ${PYTHON_PACKAGE_DST_DIR}

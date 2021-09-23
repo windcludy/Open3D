@@ -26,15 +26,16 @@
 
 #pragma once
 
-#include <Eigen/Core>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
 
 #include "open3d/core/Tensor.h"
+#include "open3d/core/hashmap/Hashmap.h"
 #include "open3d/geometry/PointCloud.h"
 #include "open3d/t/geometry/Geometry.h"
 #include "open3d/t/geometry/Image.h"
+#include "open3d/t/geometry/RGBDImage.h"
 #include "open3d/t/geometry/TensorMap.h"
 #include "open3d/utility/Console.h"
 
@@ -117,6 +118,9 @@ public:
 
     virtual ~PointCloud() override {}
 
+    /// \brief Text description.
+    std::string ToString() const;
+
     /// Getter for point_attr_ TensorMap. Used in Pybind.
     const TensorMap &GetPointAttr() const { return point_attr_; }
 
@@ -196,6 +200,12 @@ public:
                GetPointAttr(key).GetLength() == GetPoints().GetLength();
     }
 
+    /// Removes point attribute by key value. Primary attribute "points" cannot
+    /// be removed. Throws warning if attribute key does not exists.
+    ///
+    /// \param key Attribute name.
+    void RemovePointAttr(const std::string &key) { point_attr_.Erase(key); }
+
     /// Check if the "points" attribute's value has length > 0.
     /// This is a convenience function.
     bool HasPoints() const { return HasPointAttr("points"); }
@@ -215,6 +225,29 @@ public:
     bool HasPointNormals() const { return HasPointAttr("normals"); }
 
 public:
+    /// Transfer the point cloud to a specified device.
+    /// \param device The targeted device to convert to.
+    /// \param copy If true, a new point cloud is always created; if false, the
+    /// copy is avoided when the original point cloud is already on the targeted
+    /// device.
+    PointCloud To(const core::Device &device, bool copy = false) const;
+
+    /// Returns copy of the point cloud on the same device.
+    PointCloud Clone() const;
+
+    /// Transfer the point cloud to CPU.
+    ///
+    /// If the point cloud is already on CPU, no copy will be performed.
+    PointCloud CPU() const { return To(core::Device("CPU:0")); };
+
+    /// Transfer the point cloud to a CUDA device.
+    ///
+    /// If the point cloud is already on the specified CUDA device, no copy will
+    /// be performed.
+    PointCloud CUDA(int device_id = 0) const {
+        return To(core::Device(core::Device::DeviceType::CUDA, device_id));
+    };
+
     /// Clear all data in the pointcloud.
     PointCloud &Clear() override {
         point_attr_.clear();
@@ -233,11 +266,18 @@ public:
     /// Returns the center for point coordinates.
     core::Tensor GetCenter() const;
 
-    /// Returns deep copy of the pointcloud
-    PointCloud Copy(const core::Device device) const;
+    /// Append a pointcloud and returns the resulting pointcloud.
+    ///
+    /// The pointcloud being appended, must have all the attributes
+    /// present in the pointcloud it is being appended to, with same
+    /// dtype, device and same shape other than the first dimension / length.
+    PointCloud Append(const PointCloud &other) const;
 
-    /// Returns deep copy of the pointcloud on the same device
-    PointCloud Copy() const;
+    /// operator+ for t::PointCloud appends the compatible attributes to the
+    /// pointcloud.
+    PointCloud operator+(const PointCloud &other) const {
+        return Append(other);
+    }
 
     /// \brief Transforms the points and normals (if exist)
     /// of the PointCloud.
@@ -253,7 +293,7 @@ public:
     PointCloud &Transform(const core::Tensor &transformation);
 
     /// \brief Translates the points of the PointCloud.
-    /// \param translation translation tensor of dimention {3}
+    /// \param translation translation tensor of dimension {3}
     /// Should be on the same device as the PointCloud
     /// \param relative if true (default): translates relative to Center
     /// \return Translated pointcloud
@@ -261,7 +301,7 @@ public:
                           bool relative = true);
 
     /// \brief Scales the points of the PointCloud.
-    /// \param scale Scale [double] of dimention
+    /// \param scale Scale [double] of dimension
     /// \param center Center [Tensor of dim {3}] about which the PointCloud is
     /// to be scaled. Should be on the same device as the PointCloud
     /// \return Scaled pointcloud
@@ -275,6 +315,12 @@ public:
     /// \return Rotated pointcloud
     PointCloud &Rotate(const core::Tensor &R, const core::Tensor &center);
 
+    /// \brief Downsamples a point cloud with a specified voxel size.
+    /// \param voxel_size Voxel size. A positive number.
+    PointCloud VoxelDownSample(double voxel_size,
+                               const core::HashmapBackend &backend =
+                                       core::HashmapBackend::Default) const;
+
     /// \brief Returns the device attribute of this PointCloud.
     core::Device GetDevice() const { return device_; }
 
@@ -282,29 +328,70 @@ public:
     /// camera model.
     ///
     /// Given depth value d at (u, v) image coordinate, the corresponding 3d
-    /// point is: z = d / depth_scale\n x = (u - cx) * z / fx\n y = (v - cy) * z
-    /// / fy\n
+    /// point is:
+    /// - z = d / depth_scale
+    /// - x = (u - cx) * z / fx
+    /// - y = (v - cy) * z / fy
     ///
-    /// \param depth The input depth image should be a uint16_t image.
-    /// \param intrinsic Intrinsic parameters of the camera.
-    /// \param extrinsic Extrinsic parameters of the camera.
+    /// \param depth The input depth image should be a uint16_t or float image.
+    /// \param intrinsics Intrinsic parameters of the camera.
+    /// \param extrinsics Extrinsic parameters of the camera.
     /// \param depth_scale The depth is scaled by 1 / \p depth_scale.
-    /// \param depth_trunc Truncated at \p depth_trunc distance.
+    /// \param depth_max Truncated at \p depth_max distance.
     /// \param stride Sampling factor to support coarse point cloud extraction.
+    /// Unless \p with_normals=true, there is no low pass filtering, so aliasing
+    /// is possible for \p stride>1.
+    /// \param with_normals Also compute normals for the point cloud. If
+    /// True, the point cloud will only contain points with valid normals. If
+    /// normals are requested, the depth map is first filtered to ensure smooth
+    /// normals.
     ///
-    /// \return An empty pointcloud if the conversion fails.
-    /// If \param project_valid_depth_only is true, return point cloud, which
-    /// doesn't
-    /// have nan point. If the value is false, return point cloud, which has
-    /// a point for each pixel, whereas invalid depth results in NaN points.
+    /// \return Created pointcloud with the 'points' property set. Thus is empty
+    /// if the conversion fails.
     static PointCloud CreateFromDepthImage(
             const Image &depth,
             const core::Tensor &intrinsics,
             const core::Tensor &extrinsics = core::Tensor::Eye(
                     4, core::Dtype::Float32, core::Device("CPU:0")),
-            double depth_scale = 1000.0,
-            double depth_max = 3.0,
-            int stride = 1);
+            float depth_scale = 1000.0f,
+            float depth_max = 3.0f,
+            int stride = 1,
+            bool with_normals = false);
+
+    /// \brief Factory function to create a pointcloud from an RGB-D image and a
+    /// camera model.
+    ///
+    /// Given depth value d at (u, v) image coordinate, the corresponding 3d
+    /// point is:
+    /// - z = d / depth_scale
+    /// - x = (u - cx) * z / fx
+    /// - y = (v - cy) * z / fy
+    ///
+    /// \param rgbd_image The input RGBD image should have a uint16_t or float
+    /// depth image and RGB image with any DType and the same size.
+    /// \param intrinsics Intrinsic parameters of the camera.
+    /// \param extrinsics Extrinsic parameters of the camera.
+    /// \param depth_scale The depth is scaled by 1 / \p depth_scale.
+    /// \param depth_max Truncated at \p depth_max distance.
+    /// \param stride Sampling factor to support coarse point cloud extraction.
+    /// Unless \p with_normals=true, there is no low pass filtering, so aliasing
+    /// is possible for \p stride>1.
+    /// \param with_normals Also compute normals for the point cloud. If True,
+    /// the point cloud will only contain points with valid normals. If
+    /// normals are requested, the depth map is first filtered to ensure smooth
+    /// normals.
+    ///
+    /// \return Created pointcloud with the 'points' and 'colors' properties
+    /// set. This is empty if the conversion fails.
+    static PointCloud CreateFromRGBDImage(
+            const RGBDImage &rgbd_image,
+            const core::Tensor &intrinsics,
+            const core::Tensor &extrinsics = core::Tensor::Eye(
+                    4, core::Dtype::Float32, core::Device("CPU:0")),
+            float depth_scale = 1000.0f,
+            float depth_max = 3.0f,
+            int stride = 1,
+            bool with_normals = false);
 
     /// Create a PointCloud from a legacy Open3D PointCloud.
     static PointCloud FromLegacyPointCloud(
@@ -314,6 +401,26 @@ public:
 
     /// Convert to a legacy Open3D PointCloud.
     open3d::geometry::PointCloud ToLegacyPointCloud() const;
+
+    /// Project a point cloud to a depth image.
+    geometry::Image ProjectToDepthImage(
+            int width,
+            int height,
+            const core::Tensor &intrinsics,
+            const core::Tensor &extrinsics = core::Tensor::Eye(
+                    4, core::Dtype::Float32, core::Device("CPU:0")),
+            float depth_scale = 1000.0f,
+            float depth_max = 3.0f);
+
+    /// Project a point cloud to an RGBD image.
+    geometry::RGBDImage ProjectToRGBDImage(
+            int width,
+            int height,
+            const core::Tensor &intrinsics,
+            const core::Tensor &extrinsics = core::Tensor::Eye(
+                    4, core::Dtype::Float32, core::Device("CPU:0")),
+            float depth_scale = 1000.0f,
+            float depth_max = 3.0f);
 
 protected:
     core::Device device_ = core::Device("CPU:0");

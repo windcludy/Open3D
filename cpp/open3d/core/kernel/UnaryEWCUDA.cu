@@ -92,6 +92,55 @@ static OPEN3D_HOST_DEVICE void CUDAAbsElementKernel(const void* src,
             abs(static_cast<double>(*static_cast<const scalar_t*>(src))));
 }
 
+template <typename scalar_t>
+static OPEN3D_HOST_DEVICE void CUDAIsNanElementKernel(const void* src,
+                                                      void* dst) {
+    *static_cast<bool*>(dst) =
+            isnan(static_cast<float>(*static_cast<const scalar_t*>(src)));
+}
+
+template <typename scalar_t>
+static OPEN3D_HOST_DEVICE void CUDAIsInfElementKernel(const void* src,
+                                                      void* dst) {
+    *static_cast<bool*>(dst) =
+            isinf(static_cast<float>(*static_cast<const scalar_t*>(src)));
+}
+
+template <typename scalar_t>
+static OPEN3D_HOST_DEVICE void CUDAIsFiniteElementKernel(const void* src,
+                                                         void* dst) {
+    *static_cast<bool*>(dst) =
+            isfinite(static_cast<float>(*static_cast<const scalar_t*>(src)));
+}
+
+template <typename scalar_t>
+static OPEN3D_HOST_DEVICE void CUDAFloorElementKernel(const void* src,
+                                                      void* dst) {
+    *static_cast<scalar_t*>(dst) = static_cast<scalar_t>(
+            floor(static_cast<double>(*static_cast<const scalar_t*>(src))));
+}
+
+template <typename scalar_t>
+static OPEN3D_HOST_DEVICE void CUDACeilElementKernel(const void* src,
+                                                     void* dst) {
+    *static_cast<scalar_t*>(dst) = static_cast<scalar_t>(
+            ceil(static_cast<double>(*static_cast<const scalar_t*>(src))));
+}
+
+template <typename scalar_t>
+static OPEN3D_HOST_DEVICE void CUDARoundElementKernel(const void* src,
+                                                      void* dst) {
+    *static_cast<scalar_t*>(dst) = static_cast<scalar_t>(
+            round(static_cast<double>(*static_cast<const scalar_t*>(src))));
+}
+
+template <typename scalar_t>
+static OPEN3D_HOST_DEVICE void CUDATruncElementKernel(const void* src,
+                                                      void* dst) {
+    *static_cast<scalar_t*>(dst) = static_cast<scalar_t>(
+            trunc(static_cast<double>(*static_cast<const scalar_t*>(src))));
+}
+
 template <typename src_t, typename dst_t>
 static OPEN3D_HOST_DEVICE void CUDALogicalNotElementKernel(const void* src,
                                                            void* dst) {
@@ -118,6 +167,19 @@ void CopyCUDA(const Tensor& src, Tensor& dst) {
             MemoryManager::Memcpy(dst.GetDataPtr(), dst_device,
                                   src.GetDataPtr(), src_device,
                                   src_dtype.ByteSize() * shape.NumElements());
+        } else if (dst.NumElements() > 1 && dst.IsContiguous() &&
+                   src.NumElements() == 1 && !src_dtype.IsObject()) {
+            int64_t num_elements = dst.NumElements();
+
+            DISPATCH_DTYPE_TO_TEMPLATE_WITH_BOOL(dst_dtype, [&]() {
+                scalar_t scalar_element = src.To(dst_dtype).Item<scalar_t>();
+                scalar_t* dst_ptr = static_cast<scalar_t*>(dst.GetDataPtr());
+                CUDALauncher::LaunchGeneralKernel(
+                        num_elements,
+                        [=] OPEN3D_HOST_DEVICE(int64_t workload_idx) {
+                            dst_ptr[workload_idx] = scalar_element;
+                        });
+            });
         } else if (src_device == dst_device) {
             // For more optimized version, one can check if P2P from src to
             // dst is enabled, then put synchronization with streams on both
@@ -150,7 +212,7 @@ void CopyCUDA(const Tensor& src, Tensor& dst) {
                 });
             }
         } else {
-            dst.CopyFrom(src.Contiguous().Copy(dst_device));
+            dst.CopyFrom(src.Contiguous().To(dst_device));
         }
     } else if (src_device.GetType() == Device::DeviceType::CPU &&
                        dst_device.GetType() == Device::DeviceType::CUDA ||
@@ -163,7 +225,7 @@ void CopyCUDA(const Tensor& src, Tensor& dst) {
                                   src_conti.GetDataPtr(), src_conti.GetDevice(),
                                   src_dtype.ByteSize() * shape.NumElements());
         } else {
-            dst.CopyFrom(src.Contiguous().Copy(dst_device));
+            dst.CopyFrom(src.Contiguous().To(dst_device));
         }
     } else {
         utility::LogError("Wrong device type {} -> {}", src_device.ToString(),
@@ -172,7 +234,7 @@ void CopyCUDA(const Tensor& src, Tensor& dst) {
 }
 
 void UnaryEWCUDA(const Tensor& src, Tensor& dst, UnaryEWOpCode op_code) {
-    // src and dst have been chaged to have the same shape, dtype, device
+    // src and dst have been chaged to have the same shape, dtype, device.
     Dtype src_dtype = src.GetDtype();
     Dtype dst_dtype = dst.GetDtype();
 
@@ -207,6 +269,32 @@ void UnaryEWCUDA(const Tensor& src, Tensor& dst, UnaryEWOpCode op_code) {
                 utility::LogError(
                         "Boolean op's output type must be boolean or the "
                         "same type as the input.");
+            }
+        });
+    } else if (op_code == UnaryEWOpCode::IsNan ||
+               op_code == UnaryEWOpCode::IsInf ||
+               op_code == UnaryEWOpCode::IsFinite) {
+        assert_dtype_is_float(src_dtype);
+        Indexer indexer({src}, dst, DtypePolicy::INPUT_SAME_OUTPUT_BOOL);
+        DISPATCH_DTYPE_TO_TEMPLATE(src_dtype, [&]() {
+            if (op_code == UnaryEWOpCode::IsNan) {
+                CUDALauncher::LaunchUnaryEWKernel(
+                        indexer,
+                        [] OPEN3D_HOST_DEVICE(const void* src, void* dst) {
+                            CUDAIsNanElementKernel<scalar_t>(src, dst);
+                        });
+            } else if (op_code == UnaryEWOpCode::IsInf) {
+                CUDALauncher::LaunchUnaryEWKernel(
+                        indexer,
+                        [] OPEN3D_HOST_DEVICE(const void* src, void* dst) {
+                            CUDAIsInfElementKernel<scalar_t>(src, dst);
+                        });
+            } else if (op_code == UnaryEWOpCode::IsFinite) {
+                CUDALauncher::LaunchUnaryEWKernel(
+                        indexer,
+                        [] OPEN3D_HOST_DEVICE(const void* src, void* dst) {
+                            CUDAIsFiniteElementKernel<scalar_t>(src, dst);
+                        });
             }
         });
     } else {
@@ -257,6 +345,34 @@ void UnaryEWCUDA(const Tensor& src, Tensor& dst, UnaryEWOpCode op_code) {
                             indexer,
                             [] OPEN3D_HOST_DEVICE(const void* src, void* dst) {
                                 CUDAAbsElementKernel<scalar_t>(src, dst);
+                            });
+                    break;
+                case UnaryEWOpCode::Floor:
+                    CUDALauncher::LaunchUnaryEWKernel(
+                            indexer,
+                            [] OPEN3D_HOST_DEVICE(const void* src, void* dst) {
+                                CUDAFloorElementKernel<scalar_t>(src, dst);
+                            });
+                    break;
+                case UnaryEWOpCode::Ceil:
+                    CUDALauncher::LaunchUnaryEWKernel(
+                            indexer,
+                            [] OPEN3D_HOST_DEVICE(const void* src, void* dst) {
+                                CUDACeilElementKernel<scalar_t>(src, dst);
+                            });
+                    break;
+                case UnaryEWOpCode::Round:
+                    CUDALauncher::LaunchUnaryEWKernel(
+                            indexer,
+                            [] OPEN3D_HOST_DEVICE(const void* src, void* dst) {
+                                CUDARoundElementKernel<scalar_t>(src, dst);
+                            });
+                    break;
+                case UnaryEWOpCode::Trunc:
+                    CUDALauncher::LaunchUnaryEWKernel(
+                            indexer,
+                            [] OPEN3D_HOST_DEVICE(const void* src, void* dst) {
+                                CUDATruncElementKernel<scalar_t>(src, dst);
                             });
                     break;
                 default:

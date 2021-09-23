@@ -28,6 +28,9 @@
 
 #include "open3d/core/Tensor.h"
 #include "open3d/utility/Console.h"
+#ifdef _MSC_VER
+#pragma warning(disable : 4996)  // Use of [[deprecated]] feature
+#endif
 #include "pybind/core/core.h"
 #include "pybind/open3d_pybind.h"
 #include "pybind/pybind_utils.h"
@@ -39,11 +42,11 @@ static Tensor CastOptionalDtypeDevice(const Tensor& t,
                                       utility::optional<Dtype> dtype,
                                       utility::optional<Device> device) {
     Tensor t_cast = t;
-    if (dtype.has_value() && dtype.value() != t_cast.GetDtype()) {
-        t_cast = t_cast.To(dtype.value(), /*copy=*/false);
+    if (dtype.has_value()) {
+        t_cast = t_cast.To(dtype.value());
     }
-    if (device.has_value() && device.value() != t_cast.GetDevice()) {
-        t_cast = t_cast.Copy(device.value());
+    if (device.has_value()) {
+        t_cast = t_cast.To(device.value());
     }
     return t_cast;
 }
@@ -133,7 +136,7 @@ Tensor PyArrayToTensor(py::array array, bool inplace) {
     if (inplace) {
         return t_inplace;
     } else {
-        return t_inplace.Copy();
+        return t_inplace.Clone();
     }
 }
 
@@ -168,7 +171,7 @@ Tensor DoubleToTensor(double scalar_value,
     }
     return Tensor(std::vector<double>{scalar_value}, {}, Dtype::Float64,
                   device_value)
-            .To(dtype_value, /*copy=*/false);
+            .To(dtype_value);
 }
 
 Tensor IntToTensor(int64_t scalar_value,
@@ -184,21 +187,41 @@ Tensor IntToTensor(int64_t scalar_value,
     }
     return Tensor(std::vector<int64_t>{scalar_value}, {}, Dtype::Int64,
                   device_value)
-            .To(dtype_value, /*copy=*/false);
+            .To(dtype_value);
+}
+
+Tensor BoolToTensor(bool scalar_value,
+                    utility::optional<Dtype> dtype,
+                    utility::optional<Device> device) {
+    Dtype dtype_value = Dtype::Bool;
+    if (dtype.has_value()) {
+        dtype_value = dtype.value();
+    }
+    Device device_value("CPU:0");
+    if (device.has_value()) {
+        device_value = device.value();
+    }
+    return Tensor(std::vector<bool>{scalar_value}, {}, Dtype::Bool,
+                  device_value)
+            .To(dtype_value);
 }
 
 Tensor PyHandleToTensor(const py::handle& handle,
                         utility::optional<Dtype> dtype,
                         utility::optional<Device> device,
                         bool force_copy) {
-    /// 1) int
-    /// 2) float (double)
-    /// 3) list
-    /// 4) tuple
-    /// 5) numpy.ndarray (value will be copied)
-    /// 6) Tensor (value will be copied)
+    // 1) bool
+    // 2) int
+    // 3) float (double)
+    // 4) list
+    // 5) tuple
+    // 6) numpy.ndarray (value will be copied)
+    // 7) Tensor (value will be copied)
     std::string class_name(handle.get_type().str());
-    if (class_name == "<class 'int'>") {
+    if (class_name == "<class 'bool'>") {
+        return BoolToTensor(static_cast<bool>(handle.cast<py::bool_>()), dtype,
+                            device);
+    } else if (class_name == "<class 'int'>") {
         return IntToTensor(static_cast<int64_t>(handle.cast<py::int_>()), dtype,
                            device);
     } else if (class_name == "<class 'float'>") {
@@ -217,7 +240,7 @@ Tensor PyHandleToTensor(const py::handle& handle,
         try {
             Tensor* tensor = handle.cast<Tensor*>();
             if (force_copy) {
-                return CastOptionalDtypeDevice(tensor->Copy(), dtype, device);
+                return CastOptionalDtypeDevice(tensor->Clone(), dtype, device);
             } else {
                 return CastOptionalDtypeDevice(*tensor, dtype, device);
             }
@@ -225,7 +248,7 @@ Tensor PyHandleToTensor(const py::handle& handle,
             utility::LogError("Cannot cast index to Tensor.");
         }
     } else {
-        utility::LogError("PyHandleToTensor has invlaid input type {}.",
+        utility::LogError("PyHandleToTensor has invalid input type {}.",
                           class_name);
     }
 }
@@ -276,7 +299,7 @@ SizeVector PyHandleToSizeVector(const py::handle& handle) {
         }
     } else {
         utility::LogError(
-                "PyHandleToSizeVector has invlaid input type {}. Only int, "
+                "PyHandleToSizeVector has invalid input type {}. Only int, "
                 "tuple and list are supported.",
                 class_name);
     }
