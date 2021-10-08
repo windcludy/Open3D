@@ -40,6 +40,8 @@
 #include "open3d/utility/Console.h"
 #include "open3d/utility/FileSystem.h"
 #include "open3d/utility/ProgressReporters.h"
+#include <TargetConditionals.h>
+#if !TARGET_OS_IOS
 #include "open3d/visualization/rendering/Material.h"
 #include "open3d/visualization/rendering/Model.h"
 #endif

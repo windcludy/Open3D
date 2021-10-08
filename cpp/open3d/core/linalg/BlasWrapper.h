@@ -30,8 +30,6 @@
 #include "open3d/core/linalg/LinalgHeadersCUDA.h"
 #include "open3d/utility/Console.h"
 
-typedef enum CBLAS_ORDER CBLAS_LAYOUT;
-
 namespace open3d {
 namespace core {
 

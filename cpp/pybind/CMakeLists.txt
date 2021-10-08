@@ -92,11 +92,6 @@ set(PY_ALL_SOURCE_FILES
     utility/console.cpp
     utility/eigen.cpp
     utility/utility.cpp
-    visualization/visualizer.cpp
-    visualization/visualization.cpp
-    visualization/renderoption.cpp
-    visualization/viewcontrol.cpp
-    visualization/utility.cpp
     )
 
 if (BUILD_GUI)

@@ -14,6 +14,7 @@ cmake \
     -DCMAKE_INSTALL_PREFIX=../ios/install \
     -DPYTHON_EXECUTABLE=$(which python3) \
     -DBUILD_EXAMPLES=OFF \
+    -DWITH_IPPICV=OFF \
     -GXcode \
     -DCMAKE_TOOLCHAIN_FILE=../ios/iOS.cmake \
     "-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64" \
