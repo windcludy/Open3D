@@ -33,19 +33,92 @@
 #include "open3d/core/Device.h"
 #include "open3d/core/Dispatch.h"
 #include "open3d/core/Dtype.h"
+#include "open3d/core/NumpyIO.h"
 #include "open3d/core/ShapeUtil.h"
 #include "open3d/core/SizeVector.h"
 #include "open3d/core/TensorKey.h"
+#include "open3d/core/kernel/Arange.h"
 #include "open3d/core/kernel/Kernel.h"
+#include "open3d/core/linalg/Det.h"
 #include "open3d/core/linalg/Inverse.h"
+#include "open3d/core/linalg/LU.h"
 #include "open3d/core/linalg/LeastSquares.h"
 #include "open3d/core/linalg/Matmul.h"
 #include "open3d/core/linalg/SVD.h"
 #include "open3d/core/linalg/Solve.h"
+#include "open3d/core/linalg/Tri.h"
 #include "open3d/utility/Console.h"
 
 namespace open3d {
 namespace core {
+
+static DLDataTypeCode DtypeToDLDataTypeCode(const Dtype& dtype) {
+    if (dtype == Dtype::Float32) return DLDataTypeCode::kDLFloat;
+    if (dtype == Dtype::Float64) return DLDataTypeCode::kDLFloat;
+    if (dtype == Dtype::Int8) return DLDataTypeCode::kDLInt;
+    if (dtype == Dtype::Int16) return DLDataTypeCode::kDLInt;
+    if (dtype == Dtype::Int32) return DLDataTypeCode::kDLInt;
+    if (dtype == Dtype::Int64) return DLDataTypeCode::kDLInt;
+    if (dtype == Dtype::UInt8) return DLDataTypeCode::kDLUInt;
+    if (dtype == Dtype::UInt16) return DLDataTypeCode::kDLUInt;
+    if (dtype == Dtype::UInt32) return DLDataTypeCode::kDLUInt;
+    if (dtype == Dtype::UInt64) return DLDataTypeCode::kDLUInt;
+    utility::LogError("Unsupported data type");
+    return DLDataTypeCode();
+}
+
+static Dtype DLDataTypeToDtype(const DLDataType& dltype) {
+    if (dltype.lanes != 1) {
+        utility::LogError("Only supports lanes == 1, but lanes == {}",
+                          dltype.lanes);
+    }
+    switch (dltype.code) {
+        case DLDataTypeCode::kDLUInt:
+            switch (dltype.bits) {
+                case 8:
+                    return Dtype::UInt8;
+                case 16:
+                    return Dtype::UInt16;
+                case 32:
+                    return Dtype::UInt32;
+                case 64:
+                    return Dtype::UInt64;
+                default:
+                    utility::LogError("Unsupported kDLUInt bits {}",
+                                      dltype.bits);
+            }
+            break;
+        case DLDataTypeCode::kDLInt:
+            switch (dltype.bits) {
+                case 8:
+                    return Dtype::Int8;
+                case 16:
+                    return Dtype::Int16;
+                case 32:
+                    return Dtype::Int32;
+                case 64:
+                    return Dtype::Int64;
+                default:
+                    utility::LogError("Unsupported kDLInt bits {}",
+                                      dltype.bits);
+            }
+            break;
+        case DLDataTypeCode::kDLFloat:
+            switch (dltype.bits) {
+                case 32:
+                    return Dtype::Float32;
+                case 64:
+                    return Dtype::Float64;
+                default:
+                    utility::LogError("Unsupported kDLFloat bits {}",
+                                      dltype.bits);
+            }
+            break;
+        default:
+            utility::LogError("Unsupported dtype code {}", dltype.code);
+    }
+    return Dtype::Undefined;
+}
 
 /// Open3D DLPack Tensor manager.
 class Open3DDLManagedTensor {
@@ -77,22 +150,7 @@ private:
         DLDataType dl_data_type;
         Dtype dtype = o3d_tensor_.GetDtype();
 
-        if (dtype == Dtype::Float32) {
-            dl_data_type.code = DLDataTypeCode::kDLFloat;
-        } else if (dtype == Dtype::Float64) {
-            dl_data_type.code = DLDataTypeCode::kDLFloat;
-        } else if (dtype == Dtype::Int32) {
-            dl_data_type.code = DLDataTypeCode::kDLInt;
-        } else if (dtype == Dtype::Int64) {
-            dl_data_type.code = DLDataTypeCode::kDLInt;
-        } else if (dtype == Dtype::UInt8) {
-            dl_data_type.code = DLDataTypeCode::kDLUInt;
-        } else if (dtype == Dtype::UInt16) {
-            dl_data_type.code = DLDataTypeCode::kDLUInt;
-        } else {
-            utility::LogError("Unsupported data type");
-        }
-
+        dl_data_type.code = DtypeToDLDataTypeCode(dtype);
         dl_data_type.bits = static_cast<uint8_t>(dtype.ByteSize() * 8);
         dl_data_type.lanes = 1;
 
@@ -209,15 +267,51 @@ Tensor Tensor::Diag(const Tensor& input) {
     return diag;
 }
 
+Tensor Tensor::Arange(Scalar start,
+                      Scalar stop,
+                      Scalar step,
+                      Dtype dtype,
+                      const Device& device) {
+    start.AssertSameScalarType(stop,
+                               "start must have the same scalar type as stop.");
+    start.AssertSameScalarType(step,
+                               "start must have the same scalar type as step.");
+
+    if (step.Equal(0)) {
+        utility::LogError("Step cannot be 0.");
+    }
+    if (stop.Equal(start)) {
+        return Tensor({0}, dtype, device);
+    }
+
+    Tensor t_start;
+    Tensor t_stop;
+    Tensor t_step;
+    DISPATCH_DTYPE_TO_TEMPLATE(dtype, [&]() {
+        t_start = Tensor::Full({}, start.To<scalar_t>(), dtype, device);
+        t_stop = Tensor::Full({}, stop.To<scalar_t>(), dtype, device);
+        t_step = Tensor::Full({}, step.To<scalar_t>(), dtype, device);
+    });
+
+    return kernel::Arange(t_start, t_stop, t_step);
+}
+
+Tensor Tensor::Reverse() const {
+    // TODO: Unoptimized with ai. Can be improved when negative step in Slice is
+    // implemented.
+    int64_t n = NumElements();
+    Tensor reverse_idx = Tensor::Arange(n - 1, -1, -1);
+    return View({n}).IndexGet({reverse_idx}).View(GetShape());
+}
+
 Tensor Tensor::GetItem(const TensorKey& tk) const {
     if (tk.GetMode() == TensorKey::TensorKeyMode::Index) {
         return IndexExtract(0, tk.GetIndex());
     } else if (tk.GetMode() == TensorKey::TensorKeyMode::Slice) {
-        TensorKey tk_new = tk.UpdateWithDimSize(shape_[0]);
+        TensorKey tk_new = tk.InstantiateDimSize(shape_[0]);
         return Slice(0, tk_new.GetStart(), tk_new.GetStop(), tk_new.GetStep());
     } else if (tk.GetMode() == TensorKey::TensorKeyMode::IndexTensor) {
-        Tensor index_tensor(*tk.GetIndexTensor());
-        return IndexGet({index_tensor});
+        return IndexGet({tk.GetIndexTensor()});
     } else {
         utility::LogError("Internal error: wrong TensorKeyMode.");
     }
@@ -271,7 +365,7 @@ Tensor Tensor::GetItem(const std::vector<TensorKey>& tks) const {
                 index_tensors.push_back(Tensor(std::vector<int64_t>{},
                                                Dtype::Int64, GetDevice()));
             } else if (tk.GetMode() == TensorKey::TensorKeyMode::IndexTensor) {
-                index_tensors.push_back(Tensor(*tk.GetIndexTensor()));
+                index_tensors.push_back(tk.GetIndexTensor());
             } else {
                 utility::LogError("Internal error: wrong TensorKeyMode.");
             }
@@ -287,7 +381,7 @@ Tensor Tensor::GetItem(const std::vector<TensorKey>& tks) const {
         if (tk.GetMode() == TensorKey::TensorKeyMode::Index) {
             t = t.IndexExtract(slice_dim, tk.GetIndex());
         } else if (tk.GetMode() == TensorKey::TensorKeyMode::Slice) {
-            TensorKey tk_new = tk.UpdateWithDimSize(t.shape_[slice_dim]);
+            TensorKey tk_new = tk.InstantiateDimSize(t.shape_[slice_dim]);
             t = t.Slice(slice_dim, tk_new.GetStart(), tk_new.GetStop(),
                         tk_new.GetStep());
             slice_dim++;
@@ -305,8 +399,7 @@ Tensor Tensor::SetItem(const Tensor& value) {
 
 Tensor Tensor::SetItem(const TensorKey& tk, const Tensor& value) {
     if (tk.GetMode() == TensorKey::TensorKeyMode::IndexTensor) {
-        Tensor index_tensor(*tk.GetIndexTensor());
-        IndexSet({index_tensor}, value);
+        IndexSet({tk.GetIndexTensor()}, value);
     } else {
         this->GetItem(tk) = value;
     }
@@ -343,7 +436,7 @@ Tensor Tensor::SetItem(const std::vector<TensorKey>& tks, const Tensor& value) {
                 index_tensors.push_back(Tensor(std::vector<int64_t>{},
                                                Dtype::Int64, GetDevice()));
             } else if (tk.GetMode() == TensorKey::TensorKeyMode::IndexTensor) {
-                index_tensors.push_back(Tensor(*tk.GetIndexTensor()));
+                index_tensors.push_back(tk.GetIndexTensor());
             } else {
                 utility::LogError("Internal error: wrong TensorKeyMode.");
             }
@@ -360,7 +453,7 @@ Tensor Tensor::SetItem(const std::vector<TensorKey>& tks, const Tensor& value) {
 /// Assign (copy) values from another Tensor, shape, dtype, device may change.
 void Tensor::Assign(const Tensor& other) {
     shape_ = other.shape_;
-    strides_ = DefaultStrides(shape_);
+    strides_ = shape_util::DefaultStrides(shape_);
     dtype_ = other.dtype_;
     blob_ = std::make_shared<Blob>(shape_.NumElements() * dtype_.ByteSize(),
                                    other.GetDevice());
@@ -418,7 +511,7 @@ Tensor Tensor::Reshape(const SizeVector& dst_shape) const {
     bool can_restride;
     SizeVector new_strides;
     std::tie(can_restride, new_strides) =
-            ComputeNewStrides(shape_, strides_, inferred_dst_shape);
+            shape_util::Restride(shape_, strides_, inferred_dst_shape);
     if (can_restride) {
         return AsStrided(inferred_dst_shape, new_strides);
     } else {
@@ -432,7 +525,7 @@ Tensor Tensor::View(const SizeVector& dst_shape) const {
     bool can_restride;
     SizeVector new_strides;
     std::tie(can_restride, new_strides) =
-            ComputeNewStrides(shape_, strides_, inferred_dst_shape);
+            shape_util::Restride(shape_, strides_, inferred_dst_shape);
     if (can_restride) {
         return AsStrided(inferred_dst_shape, new_strides);
     } else {
@@ -444,18 +537,11 @@ Tensor Tensor::View(const SizeVector& dst_shape) const {
     }
 }
 
-Tensor Tensor::Copy(const Device& device) const {
-    Tensor dst_tensor(shape_, dtype_, device);
-    kernel::Copy(*this, dst_tensor);
-    return dst_tensor;
-}
-
 Tensor Tensor::To(Dtype dtype, bool copy) const {
     if (!copy && dtype_ == dtype) {
         return *this;
     }
-
-    // We only support scalar type conversion
+    // We only support scalar type conversion.
     if (dtype_.IsObject() || dtype.IsObject()) {
         utility::LogError("Cannot cast type from {} to {}.", dtype_.ToString(),
                           dtype.ToString());
@@ -465,107 +551,36 @@ Tensor Tensor::To(Dtype dtype, bool copy) const {
     return dst_tensor;
 }
 
-void Tensor::CopyFrom(const Tensor& other) { AsRvalue() = other; }
-
-void Tensor::ShallowCopyFrom(const Tensor& other) {
-    shape_ = other.shape_;
-    strides_ = other.strides_;
-    dtype_ = other.dtype_;
-    blob_ = other.blob_;
-    data_ptr_ = other.data_ptr_;
+Tensor Tensor::To(const Device& device, bool copy) const {
+    if (!copy && GetDevice() == device) {
+        return *this;
+    }
+    Tensor dst_tensor(shape_, dtype_, device);
+    kernel::Copy(*this, dst_tensor);
+    return dst_tensor;
 }
+
+Tensor Tensor::To(const Device& device, Dtype dtype, bool copy) const {
+    Tensor dst_tensor = To(dtype, copy);
+    dst_tensor = dst_tensor.To(device, copy);
+    return dst_tensor;
+}
+
+void Tensor::CopyFrom(const Tensor& other) { AsRvalue() = other; }
 
 Tensor Tensor::Contiguous() const {
     if (IsContiguous()) {
-        // Returns a shallow copy of the current Tensor
-        return Tensor(shape_, strides_, data_ptr_, dtype_, blob_);
+        return *this;
     } else {
-        // Compact the tensor to contiguous on the same device
-        return Copy(GetDevice());
+        return To(GetDevice(), /*copy=*/true);
     }
-}
-
-SizeVector Tensor::DefaultStrides(const SizeVector& shape) {
-    SizeVector strides(shape.size());
-    int64_t stride_size = 1;
-    for (int64_t i = shape.size(); i > 0; --i) {
-        strides[i - 1] = stride_size;
-        // Handles 0-sized dimensions
-        stride_size *= std::max<int64_t>(shape[i - 1], 1);
-    }
-    return strides;
-}
-
-std::pair<bool, SizeVector> Tensor::ComputeNewStrides(
-        const SizeVector& old_shape,
-        const SizeVector& old_strides,
-        const SizeVector& new_shape) {
-    if (old_shape.empty()) {
-        return std::make_pair(true, SizeVector(new_shape.size(), 1));
-    }
-
-    // NOTE: Stride is arbitrary in the numel() == 0 case. To match NumPy
-    // behavior we copy the strides if the size matches, otherwise we use the
-    // stride as if it were computed via resize. This could perhaps be combined
-    // with the below code, but the complexity didn't seem worth it.
-    int64_t numel = old_shape.NumElements();
-    if (numel == 0 && old_shape == new_shape) {
-        return std::make_pair(true, old_strides);
-    }
-
-    SizeVector new_strides(new_shape.size());
-    if (numel == 0) {
-        for (int64_t view_d = new_shape.size() - 1; view_d >= 0; view_d--) {
-            if (view_d == (int64_t)(new_shape.size() - 1)) {
-                new_strides[view_d] = 1;
-            } else {
-                new_strides[view_d] =
-                        std::max<int64_t>(new_shape[view_d + 1], 1) *
-                        new_strides[view_d + 1];
-            }
-        }
-        return std::make_pair(true, new_strides);
-    }
-
-    int64_t view_d = new_shape.size() - 1;
-    // Stride for each subspace in the chunk
-    int64_t chunk_base_stride = old_strides.back();
-    // Numel in current chunk
-    int64_t tensor_numel = 1;
-    int64_t view_numel = 1;
-    for (int64_t tensor_d = old_shape.size() - 1; tensor_d >= 0; tensor_d--) {
-        tensor_numel *= old_shape[tensor_d];
-        // If end of tensor size chunk, check view
-        if ((tensor_d == 0) ||
-            (old_shape[tensor_d - 1] != 1 &&
-             old_strides[tensor_d - 1] != tensor_numel * chunk_base_stride)) {
-            while (view_d >= 0 &&
-                   (view_numel < tensor_numel || new_shape[view_d] == 1)) {
-                new_strides[view_d] = view_numel * chunk_base_stride;
-                view_numel *= new_shape[view_d];
-                view_d--;
-            }
-            if (view_numel != tensor_numel) {
-                return std::make_pair(false, SizeVector());
-            }
-            if (tensor_d > 0) {
-                chunk_base_stride = old_strides[tensor_d - 1];
-                tensor_numel = 1;
-                view_numel = 1;
-            }
-        }
-    }
-    if (view_d != -1) {
-        return std::make_pair(false, SizeVector());
-    }
-    return std::make_pair(true, new_strides);
 }
 
 std::string Tensor::ToString(bool with_suffix,
                              const std::string& indent) const {
     std::ostringstream rc;
     if (GetDevice().GetType() == Device::DeviceType::CUDA || !IsContiguous()) {
-        Tensor host_contiguous_tensor = Copy(Device("CPU:0"));
+        Tensor host_contiguous_tensor = Contiguous().To(Device("CPU:0"));
         rc << host_contiguous_tensor.ToString(false, "");
     } else {
         if (shape_.NumElements() == 0) {
@@ -767,16 +782,7 @@ Tensor Tensor::T() const {
     }
 }
 
-double Tensor::Det() const {
-    // TODO: Create a proper op for Determinant.
-    this->AssertShape({3, 3});
-    this->AssertDtype(core::Dtype::Float32);
-    core::Tensor D_ = this->Copy();
-    D_[0][0] = D_[0][0] * (D_[1][1] * D_[2][2] - D_[1][2] * D_[2][1]) -
-               D_[0][1] * (D_[1][0] * D_[2][2] - D_[2][0] * D_[1][2]) +
-               D_[0][2] * (D_[1][0] * D_[2][1] - D_[2][0] * D_[1][1]);
-    return static_cast<double>(D_[0][0].Item<float>());
-}
+double Tensor::Det() const { return core::Det(*this); }
 
 Tensor Tensor::Add(const Tensor& value) const {
     Tensor dst_tensor(shape_util::BroadcastedShape(shape_, value.shape_),
@@ -785,8 +791,24 @@ Tensor Tensor::Add(const Tensor& value) const {
     return dst_tensor;
 }
 
+Tensor Tensor::Add(Scalar value) const {
+    Tensor dst_tensor;
+    DISPATCH_DTYPE_TO_TEMPLATE_WITH_BOOL(dtype_, [&]() {
+        dst_tensor = Add(
+                Tensor::Full({}, value.To<scalar_t>(), dtype_, GetDevice()));
+    });
+    return dst_tensor;
+}
+
 Tensor Tensor::Add_(const Tensor& value) {
     kernel::Add(*this, value, *this);
+    return *this;
+}
+
+Tensor Tensor::Add_(Scalar value) {
+    DISPATCH_DTYPE_TO_TEMPLATE_WITH_BOOL(dtype_, [&]() {
+        Add_(Tensor::Full({}, value.To<scalar_t>(), dtype_, GetDevice()));
+    });
     return *this;
 }
 
@@ -797,8 +819,24 @@ Tensor Tensor::Sub(const Tensor& value) const {
     return dst_tensor;
 }
 
+Tensor Tensor::Sub(Scalar value) const {
+    Tensor dst_tensor;
+    DISPATCH_DTYPE_TO_TEMPLATE_WITH_BOOL(dtype_, [&]() {
+        dst_tensor = Sub(
+                Tensor::Full({}, value.To<scalar_t>(), dtype_, GetDevice()));
+    });
+    return dst_tensor;
+}
+
 Tensor Tensor::Sub_(const Tensor& value) {
     kernel::Sub(*this, value, *this);
+    return *this;
+}
+
+Tensor Tensor::Sub_(Scalar value) {
+    DISPATCH_DTYPE_TO_TEMPLATE_WITH_BOOL(dtype_, [&]() {
+        Sub_(Tensor::Full({}, value.To<scalar_t>(), dtype_, GetDevice()));
+    });
     return *this;
 }
 
@@ -809,8 +847,24 @@ Tensor Tensor::Mul(const Tensor& value) const {
     return dst_tensor;
 }
 
+Tensor Tensor::Mul(Scalar value) const {
+    Tensor dst_tensor;
+    DISPATCH_DTYPE_TO_TEMPLATE_WITH_BOOL(dtype_, [&]() {
+        dst_tensor = Mul(
+                Tensor::Full({}, value.To<scalar_t>(), dtype_, GetDevice()));
+    });
+    return dst_tensor;
+}
+
 Tensor Tensor::Mul_(const Tensor& value) {
     kernel::Mul(*this, value, *this);
+    return *this;
+}
+
+Tensor Tensor::Mul_(Scalar value) {
+    DISPATCH_DTYPE_TO_TEMPLATE_WITH_BOOL(dtype_, [&]() {
+        Mul_(Tensor::Full({}, value.To<scalar_t>(), dtype_, GetDevice()));
+    });
     return *this;
 }
 
@@ -821,8 +875,24 @@ Tensor Tensor::Div(const Tensor& value) const {
     return dst_tensor;
 }
 
+Tensor Tensor::Div(Scalar value) const {
+    Tensor dst_tensor;
+    DISPATCH_DTYPE_TO_TEMPLATE_WITH_BOOL(dtype_, [&]() {
+        dst_tensor = Div(
+                Tensor::Full({}, value.To<scalar_t>(), dtype_, GetDevice()));
+    });
+    return dst_tensor;
+}
+
 Tensor Tensor::Div_(const Tensor& value) {
     kernel::Div(*this, value, *this);
+    return *this;
+}
+
+Tensor Tensor::Div_(Scalar value) {
+    DISPATCH_DTYPE_TO_TEMPLATE_WITH_BOOL(dtype_, [&]() {
+        Div_(Tensor::Full({}, value.To<scalar_t>(), dtype_, GetDevice()));
+    });
     return *this;
 }
 
@@ -952,6 +1022,79 @@ Tensor Tensor::Abs_() {
     return *this;
 }
 
+Tensor Tensor::IsNan() const {
+    if (dtype_ == Dtype::Float32 || dtype_ == Dtype::Float64) {
+        Tensor dst_tensor(shape_, Dtype::Bool, GetDevice());
+        kernel::UnaryEW(*this, dst_tensor, kernel::UnaryEWOpCode::IsNan);
+        return dst_tensor;
+    } else {
+        return Tensor::Zeros(shape_, Dtype::Bool, GetDevice());
+    }
+}
+
+Tensor Tensor::IsInf() const {
+    if (dtype_ == Dtype::Float32 || dtype_ == Dtype::Float64) {
+        Tensor dst_tensor(shape_, Dtype::Bool, GetDevice());
+        kernel::UnaryEW(*this, dst_tensor, kernel::UnaryEWOpCode::IsInf);
+        return dst_tensor;
+    } else {
+        return Tensor::Zeros(shape_, Dtype::Bool, GetDevice());
+    }
+}
+
+Tensor Tensor::IsFinite() const {
+    if (dtype_ == Dtype::Float32 || dtype_ == Dtype::Float64) {
+        Tensor dst_tensor(shape_, Dtype::Bool, GetDevice());
+        kernel::UnaryEW(*this, dst_tensor, kernel::UnaryEWOpCode::IsFinite);
+        return dst_tensor;
+    } else {
+        return Tensor::Ones(shape_, Dtype::Bool, GetDevice());
+    }
+}
+
+Tensor Tensor::Clip(Scalar min_val, Scalar max_val) const {
+    Tensor dst_tensor = this->Clone();
+    return dst_tensor.Clip_(min_val, max_val);
+}
+
+// TODO: Implement with kernel.
+Tensor Tensor::Clip_(Scalar min_val, Scalar max_val) {
+    DISPATCH_DTYPE_TO_TEMPLATE(dtype_, [&]() {
+        scalar_t min_val_casted = min_val.To<scalar_t>();
+        this->SetItem(TensorKey::IndexTensor(this->Lt(min_val_casted)),
+                      Full({}, min_val_casted, dtype_, GetDevice()));
+
+        scalar_t max_val_casted = max_val.To<scalar_t>();
+        this->SetItem(TensorKey::IndexTensor(this->Gt(max_val_casted)),
+                      Full({}, max_val_casted, dtype_, GetDevice()));
+    });
+    return *this;
+}
+
+Tensor Tensor::Floor() const {
+    Tensor dst_tensor(shape_, dtype_, GetDevice());
+    kernel::UnaryEW(*this, dst_tensor, kernel::UnaryEWOpCode::Floor);
+    return dst_tensor;
+}
+
+Tensor Tensor::Ceil() const {
+    Tensor dst_tensor(shape_, dtype_, GetDevice());
+    kernel::UnaryEW(*this, dst_tensor, kernel::UnaryEWOpCode::Ceil);
+    return dst_tensor;
+}
+
+Tensor Tensor::Round() const {
+    Tensor dst_tensor(shape_, dtype_, GetDevice());
+    kernel::UnaryEW(*this, dst_tensor, kernel::UnaryEWOpCode::Round);
+    return dst_tensor;
+}
+
+Tensor Tensor::Trunc() const {
+    Tensor dst_tensor(shape_, dtype_, GetDevice());
+    kernel::UnaryEW(*this, dst_tensor, kernel::UnaryEWOpCode::Trunc);
+    return dst_tensor;
+}
+
 Device Tensor::GetDevice() const {
     if (blob_ == nullptr) {
         utility::LogError("Blob is null, cannot get device");
@@ -978,8 +1121,25 @@ Tensor Tensor::LogicalAnd(const Tensor& value) const {
     return dst_tensor;
 }
 
+Tensor Tensor::LogicalAnd(Scalar value) const {
+    Tensor dst_tensor;
+    DISPATCH_DTYPE_TO_TEMPLATE_WITH_BOOL(dtype_, [&]() {
+        dst_tensor = LogicalAnd(
+                Tensor::Full({}, value.To<scalar_t>(), dtype_, GetDevice()));
+    });
+    return dst_tensor;
+}
+
 Tensor Tensor::LogicalAnd_(const Tensor& value) {
     kernel::BinaryEW(*this, value, *this, kernel::BinaryEWOpCode::LogicalAnd);
+    return *this;
+}
+
+Tensor Tensor::LogicalAnd_(Scalar value) {
+    DISPATCH_DTYPE_TO_TEMPLATE_WITH_BOOL(dtype_, [&]() {
+        LogicalAnd_(
+                Tensor::Full({}, value.To<scalar_t>(), dtype_, GetDevice()));
+    });
     return *this;
 }
 
@@ -991,8 +1151,24 @@ Tensor Tensor::LogicalOr(const Tensor& value) const {
     return dst_tensor;
 }
 
+Tensor Tensor::LogicalOr(Scalar value) const {
+    Tensor dst_tensor;
+    DISPATCH_DTYPE_TO_TEMPLATE_WITH_BOOL(dtype_, [&]() {
+        dst_tensor = LogicalOr(
+                Tensor::Full({}, value.To<scalar_t>(), dtype_, GetDevice()));
+    });
+    return dst_tensor;
+}
+
 Tensor Tensor::LogicalOr_(const Tensor& value) {
     kernel::BinaryEW(*this, value, *this, kernel::BinaryEWOpCode::LogicalOr);
+    return *this;
+}
+
+Tensor Tensor::LogicalOr_(Scalar value) {
+    DISPATCH_DTYPE_TO_TEMPLATE_WITH_BOOL(dtype_, [&]() {
+        LogicalOr_(Tensor::Full({}, value.To<scalar_t>(), dtype_, GetDevice()));
+    });
     return *this;
 }
 
@@ -1004,8 +1180,25 @@ Tensor Tensor::LogicalXor(const Tensor& value) const {
     return dst_tensor;
 }
 
+Tensor Tensor::LogicalXor(Scalar value) const {
+    Tensor dst_tensor;
+    DISPATCH_DTYPE_TO_TEMPLATE_WITH_BOOL(dtype_, [&]() {
+        dst_tensor = LogicalXor(
+                Tensor::Full({}, value.To<scalar_t>(), dtype_, GetDevice()));
+    });
+    return dst_tensor;
+}
+
 Tensor Tensor::LogicalXor_(const Tensor& value) {
     kernel::BinaryEW(*this, value, *this, kernel::BinaryEWOpCode::LogicalXor);
+    return *this;
+}
+
+Tensor Tensor::LogicalXor_(Scalar value) {
+    DISPATCH_DTYPE_TO_TEMPLATE_WITH_BOOL(dtype_, [&]() {
+        LogicalXor_(
+                Tensor::Full({}, value.To<scalar_t>(), dtype_, GetDevice()));
+    });
     return *this;
 }
 
@@ -1016,8 +1209,24 @@ Tensor Tensor::Gt(const Tensor& value) const {
     return dst_tensor;
 }
 
+Tensor Tensor::Gt(Scalar value) const {
+    Tensor dst_tensor;
+    DISPATCH_DTYPE_TO_TEMPLATE_WITH_BOOL(dtype_, [&]() {
+        dst_tensor =
+                Gt(Tensor::Full({}, value.To<scalar_t>(), dtype_, GetDevice()));
+    });
+    return dst_tensor;
+}
+
 Tensor Tensor::Gt_(const Tensor& value) {
     kernel::BinaryEW(*this, value, *this, kernel::BinaryEWOpCode::Gt);
+    return *this;
+}
+
+Tensor Tensor::Gt_(Scalar value) {
+    DISPATCH_DTYPE_TO_TEMPLATE_WITH_BOOL(dtype_, [&]() {
+        Gt_(Tensor::Full({}, value.To<scalar_t>(), dtype_, GetDevice()));
+    });
     return *this;
 }
 
@@ -1028,8 +1237,24 @@ Tensor Tensor::Lt(const Tensor& value) const {
     return dst_tensor;
 }
 
+Tensor Tensor::Lt(Scalar value) const {
+    Tensor dst_tensor;
+    DISPATCH_DTYPE_TO_TEMPLATE_WITH_BOOL(dtype_, [&]() {
+        dst_tensor =
+                Lt(Tensor::Full({}, value.To<scalar_t>(), dtype_, GetDevice()));
+    });
+    return dst_tensor;
+}
+
 Tensor Tensor::Lt_(const Tensor& value) {
     kernel::BinaryEW(*this, value, *this, kernel::BinaryEWOpCode::Lt);
+    return *this;
+}
+
+Tensor Tensor::Lt_(Scalar value) {
+    DISPATCH_DTYPE_TO_TEMPLATE_WITH_BOOL(dtype_, [&]() {
+        Lt_(Tensor::Full({}, value.To<scalar_t>(), dtype_, GetDevice()));
+    });
     return *this;
 }
 
@@ -1040,8 +1265,24 @@ Tensor Tensor::Ge(const Tensor& value) const {
     return dst_tensor;
 }
 
+Tensor Tensor::Ge(Scalar value) const {
+    Tensor dst_tensor;
+    DISPATCH_DTYPE_TO_TEMPLATE_WITH_BOOL(dtype_, [&]() {
+        dst_tensor =
+                Ge(Tensor::Full({}, value.To<scalar_t>(), dtype_, GetDevice()));
+    });
+    return dst_tensor;
+}
+
 Tensor Tensor::Ge_(const Tensor& value) {
     kernel::BinaryEW(*this, value, *this, kernel::BinaryEWOpCode::Ge);
+    return *this;
+}
+
+Tensor Tensor::Ge_(Scalar value) {
+    DISPATCH_DTYPE_TO_TEMPLATE_WITH_BOOL(dtype_, [&]() {
+        Ge_(Tensor::Full({}, value.To<scalar_t>(), dtype_, GetDevice()));
+    });
     return *this;
 }
 
@@ -1052,8 +1293,24 @@ Tensor Tensor::Le(const Tensor& value) const {
     return dst_tensor;
 }
 
+Tensor Tensor::Le(Scalar value) const {
+    Tensor dst_tensor;
+    DISPATCH_DTYPE_TO_TEMPLATE_WITH_BOOL(dtype_, [&]() {
+        dst_tensor =
+                Le(Tensor::Full({}, value.To<scalar_t>(), dtype_, GetDevice()));
+    });
+    return dst_tensor;
+}
+
 Tensor Tensor::Le_(const Tensor& value) {
     kernel::BinaryEW(*this, value, *this, kernel::BinaryEWOpCode::Le);
+    return *this;
+}
+
+Tensor Tensor::Le_(Scalar value) {
+    DISPATCH_DTYPE_TO_TEMPLATE_WITH_BOOL(dtype_, [&]() {
+        Le_(Tensor::Full({}, value.To<scalar_t>(), dtype_, GetDevice()));
+    });
     return *this;
 }
 
@@ -1064,8 +1321,24 @@ Tensor Tensor::Eq(const Tensor& value) const {
     return dst_tensor;
 }
 
+Tensor Tensor::Eq(Scalar value) const {
+    Tensor dst_tensor;
+    DISPATCH_DTYPE_TO_TEMPLATE_WITH_BOOL(dtype_, [&]() {
+        dst_tensor =
+                Eq(Tensor::Full({}, value.To<scalar_t>(), dtype_, GetDevice()));
+    });
+    return dst_tensor;
+}
+
 Tensor Tensor::Eq_(const Tensor& value) {
     kernel::BinaryEW(*this, value, *this, kernel::BinaryEWOpCode::Eq);
+    return *this;
+}
+
+Tensor Tensor::Eq_(Scalar value) {
+    DISPATCH_DTYPE_TO_TEMPLATE_WITH_BOOL(dtype_, [&]() {
+        Eq_(Tensor::Full({}, value.To<scalar_t>(), dtype_, GetDevice()));
+    });
     return *this;
 }
 
@@ -1076,8 +1349,24 @@ Tensor Tensor::Ne(const Tensor& value) const {
     return dst_tensor;
 }
 
+Tensor Tensor::Ne(Scalar value) const {
+    Tensor dst_tensor;
+    DISPATCH_DTYPE_TO_TEMPLATE_WITH_BOOL(dtype_, [&]() {
+        dst_tensor =
+                Ne(Tensor::Full({}, value.To<scalar_t>(), dtype_, GetDevice()));
+    });
+    return dst_tensor;
+}
+
 Tensor Tensor::Ne_(const Tensor& value) {
     kernel::BinaryEW(*this, value, *this, kernel::BinaryEWOpCode::Ne);
+    return *this;
+}
+
+Tensor Tensor::Ne_(Scalar value) {
+    DISPATCH_DTYPE_TO_TEMPLATE_WITH_BOOL(dtype_, [&]() {
+        Ne_(Tensor::Full({}, value.To<scalar_t>(), dtype_, GetDevice()));
+    });
     return *this;
 }
 
@@ -1085,7 +1374,7 @@ std::vector<Tensor> Tensor::NonZeroNumpy() const {
     Tensor result = kernel::NonZero(*this);
     std::vector<Tensor> results;
     for (int64_t dim = 0; dim < NumDims(); dim++) {
-        results.push_back(result[dim].Copy(GetDevice()));
+        results.push_back(result[dim].Clone());
     }
     return results;
 }
@@ -1137,55 +1426,7 @@ Tensor Tensor::FromDLPack(const DLManagedTensor* src) {
                               src->dl_tensor.ctx.device_type);
     }
 
-    Dtype dtype;
-    if (src->dl_tensor.dtype.lanes != 1) {
-        utility::LogError("Only supports lanes == 1, but lanes == {}",
-                          src->dl_tensor.dtype.lanes);
-    }
-    switch (src->dl_tensor.dtype.code) {
-        case DLDataTypeCode::kDLUInt:
-            switch (src->dl_tensor.dtype.bits) {
-                case 8:
-                    dtype = Dtype::UInt8;
-                    break;
-                case 16:
-                    dtype = Dtype::UInt16;
-                    break;
-                default:
-                    utility::LogError("Unsupported kDLUInt bits {}",
-                                      src->dl_tensor.dtype.bits);
-            }
-            break;
-        case DLDataTypeCode::kDLInt:
-            switch (src->dl_tensor.dtype.bits) {
-                case 32:
-                    dtype = Dtype::Int32;
-                    break;
-                case 64:
-                    dtype = Dtype::Int64;
-                    break;
-                default:
-                    utility::LogError("Unsupported kDLInt bits {}",
-                                      src->dl_tensor.dtype.bits);
-            }
-            break;
-        case DLDataTypeCode::kDLFloat:
-            switch (src->dl_tensor.dtype.bits) {
-                case 32:
-                    dtype = Dtype::Float32;
-                    break;
-                case 64:
-                    dtype = Dtype::Float64;
-                    break;
-                default:
-                    utility::LogError("Unsupported kDLFloat bits {}",
-                                      src->dl_tensor.dtype.bits);
-            }
-            break;
-        default:
-            utility::LogError("Unsupported dtype code {}",
-                              src->dl_tensor.dtype.code);
-    }
+    Dtype dtype = DLDataTypeToDtype(src->dl_tensor.dtype);
 
     // Open3D Blob's expects an std::function<void(void*)> deleter.
     auto deleter = [src](void* dummy) -> void {
@@ -1199,7 +1440,7 @@ Tensor Tensor::FromDLPack(const DLManagedTensor* src) {
 
     SizeVector strides;
     if (src->dl_tensor.strides == nullptr) {
-        strides = Tensor::DefaultStrides(shape);
+        strides = shape_util::DefaultStrides(shape);
     } else {
         strides = SizeVector(src->dl_tensor.strides,
                              src->dl_tensor.strides + src->dl_tensor.ndim);
@@ -1213,6 +1454,14 @@ Tensor Tensor::FromDLPack(const DLManagedTensor* src) {
                   reinterpret_cast<char*>(blob->GetDataPtr()) +
                           src->dl_tensor.byte_offset,
                   dtype, blob);
+}
+
+void Tensor::Save(const std::string& file_name) const {
+    NumpyArray(*this).Save(file_name);
+}
+
+Tensor Tensor::Load(const std::string& file_name) {
+    return NumpyArray::Load(file_name).ToTensor();
 }
 
 bool Tensor::AllClose(const Tensor& other, double rtol, double atol) const {
@@ -1246,29 +1495,54 @@ bool Tensor::IsSame(const Tensor& other) const {
            dtype_ == other.dtype_;
 }
 
-void Tensor::AssertShape(const SizeVector& expected_shape) const {
+void Tensor::AssertShape(const SizeVector& expected_shape,
+                         const std::string& error_msg) const {
     if (shape_ != expected_shape) {
-        utility::LogError("Tensor shape {} does not match expected shape: {}",
-                          shape_, expected_shape);
+        if (error_msg.empty()) {
+            utility::LogError(
+                    "Tensor has shape {}, but it is expected to be {}.", shape_,
+                    expected_shape);
+        } else {
+            utility::LogError(
+                    "Tensor has shape {}, but it is expected to be {}: {}",
+                    shape_, expected_shape, error_msg);
+        }
     }
 }
 
-void Tensor::AssertShapeCompatible(
-        const DynamicSizeVector& expected_shape) const {
-    GetShape().AssertCompatible(expected_shape);
+void Tensor::AssertShapeCompatible(const DynamicSizeVector& expected_shape,
+                                   const std::string& error_msg) const {
+    GetShape().AssertCompatible(expected_shape, error_msg);
 }
 
-void Tensor::AssertDevice(const Device& expected_device) const {
+void Tensor::AssertDevice(const Device& expected_device,
+                          const std::string& error_msg) const {
     if (GetDevice() != expected_device) {
-        utility::LogError("Tensor has device {}, but is expected to be {}.",
-                          GetDevice().ToString(), expected_device.ToString());
+        if (error_msg.empty()) {
+            utility::LogError("Tensor has device {}, but is expected to be {}",
+                              GetDevice().ToString(),
+                              expected_device.ToString());
+        } else {
+            utility::LogError(
+                    "Tensor has device {}, but is expected to be {}: {}",
+                    GetDevice().ToString(), expected_device.ToString(),
+                    error_msg);
+        }
     }
 }
 
-void Tensor::AssertDtype(const Dtype& expected_dtype) const {
+void Tensor::AssertDtype(const Dtype& expected_dtype,
+                         const std::string& error_msg) const {
     if (GetDtype() != expected_dtype) {
-        utility::LogError("Tensor has dtype {}, but is expected to be {}.",
-                          GetDtype().ToString(), expected_dtype.ToString());
+        if (error_msg.empty()) {
+            utility::LogError("Tensor has dtype {}, but is expected to be {}.",
+                              GetDtype().ToString(), expected_dtype.ToString());
+        } else {
+            utility::LogError(
+                    "Tensor has dtype {}, but is expected to be {}: {}",
+                    GetDtype().ToString(), expected_dtype.ToString(),
+                    error_msg);
+        }
     }
 }
 
@@ -1282,13 +1556,43 @@ Tensor Tensor::Solve(const Tensor& rhs) const {
     Tensor output;
     core::Solve(*this, rhs, output);
     return output;
-};
+}
 
 Tensor Tensor::LeastSquares(const Tensor& rhs) const {
     Tensor output;
     core::LeastSquares(*this, rhs, output);
     return output;
-};
+}
+
+std::tuple<Tensor, Tensor, Tensor> Tensor::LU(const bool permute_l) const {
+    core::Tensor permutation, lower, upper;
+    core::LU(*this, permutation, lower, upper, permute_l);
+    return std::make_tuple(permutation, lower, upper);
+}
+
+std::tuple<Tensor, Tensor> Tensor::LUIpiv() const {
+    core::Tensor ipiv, output;
+    core::LUIpiv(*this, ipiv, output);
+    return std::make_tuple(ipiv, output);
+}
+
+Tensor Tensor::Triu(const int diagonal) const {
+    Tensor output;
+    core::Triu(*this, output, diagonal);
+    return output;
+}
+
+Tensor Tensor::Tril(const int diagonal) const {
+    Tensor output;
+    core::Tril(*this, output, diagonal);
+    return output;
+}
+
+std::tuple<Tensor, Tensor> Tensor::Triul(const int diagonal) const {
+    Tensor upper, lower;
+    core::Triul(*this, upper, lower, diagonal);
+    return std::make_tuple(upper, lower);
+}
 
 Tensor Tensor::Inverse() const {
     Tensor output;

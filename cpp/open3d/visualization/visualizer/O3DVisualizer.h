@@ -26,8 +26,10 @@
 
 #pragma once
 
+#include "open3d/visualization/gui/SceneWidget.h"
 #include "open3d/visualization/gui/Window.h"
 #include "open3d/visualization/rendering/Material.h"
+#include "open3d/visualization/rendering/Scene.h"
 #include "open3d/visualization/visualizer/O3DVisualizerSelections.h"
 
 namespace open3d {
@@ -47,6 +49,7 @@ namespace visualization {
 
 namespace rendering {
 class Open3DScene;
+struct TriangleMeshModel;
 }  // namespace rendering
 
 namespace visualizer {
@@ -61,6 +64,7 @@ public:
         std::string name;
         std::shared_ptr<geometry::Geometry3D> geometry;
         std::shared_ptr<t::geometry::Geometry> tgeometry;
+        std::shared_ptr<rendering::TriangleMeshModel> model;
         rendering::Material material;
         std::string group;
         double time = 0.0;
@@ -71,10 +75,15 @@ public:
     };
 
     struct UIState {
+        gui::SceneWidget::Controls mouse_mode =
+                gui::SceneWidget::Controls::ROTATE_CAMERA;
         Shader scene_shader = Shader::STANDARD;
         bool show_settings = false;
         bool show_skybox = false;
         bool show_axes = false;
+        bool show_ground = false;
+        rendering::Scene::GroundPlane ground_plane =
+                rendering::Scene::GroundPlane::XZ;
         bool is_animating = false;
         std::set<std::string> enabled_groups;
 
@@ -108,14 +117,21 @@ public:
 
     void AddGeometry(const std::string& name,
                      std::shared_ptr<geometry::Geometry3D> geom,
-                     rendering::Material* material = nullptr,
+                     const rendering::Material* material = nullptr,
                      const std::string& group = "",
                      double time = 0.0,
                      bool is_visible = true);
 
     void AddGeometry(const std::string& name,
                      std::shared_ptr<t::geometry::Geometry> tgeom,
-                     rendering::Material* material = nullptr,
+                     const rendering::Material* material = nullptr,
+                     const std::string& group = "",
+                     double time = 0.0,
+                     bool is_visible = true);
+
+    void AddGeometry(const std::string& name,
+                     std::shared_ptr<rendering::TriangleMeshModel> tgeom,
+                     const rendering::Material* material = nullptr,
                      const std::string& group = "",
                      double time = 0.0,
                      bool is_visible = true);
@@ -126,18 +142,31 @@ public:
 
     DrawObject GetGeometry(const std::string& name) const;
 
+    void Add3DLabel(const Eigen::Vector3f& pos, const char* text);
+    void Clear3DLabels();
+
     void SetupCamera(float fov,
                      const Eigen::Vector3f& center,
                      const Eigen::Vector3f& eye,
                      const Eigen::Vector3f& up);
+    void SetupCamera(const camera::PinholeCameraIntrinsic& intrinsic,
+                     const Eigen::Matrix4d& extrinsic);
+    void SetupCamera(const Eigen::Matrix3d& intrinsic,
+                     const Eigen::Matrix4d& extrinsic,
+                     int intrinsic_width_px,
+                     int intrinsic_height_px);
+
     void ResetCameraToDefault();
 
     void ShowSettings(bool show);
     void ShowSkybox(bool show);
     void ShowAxes(bool show);
+    void ShowGround(bool show);
+    void SetGroundPlane(rendering::Scene::GroundPlane plane);
     void SetPointSize(int point_size);
     void SetLineWidth(int line_width);
     void EnableGroup(const std::string& group, bool enable);
+    void SetMouseMode(gui::SceneWidget::Controls mode);
 
     std::vector<O3DVisualizerSelections::SelectionSet> GetSelectionSets() const;
 
@@ -173,7 +202,7 @@ public:
     void StopRPCInterface();
 
 protected:
-    void Layout(const gui::Theme& theme);
+    void Layout(const gui::LayoutContext& context);
 
 private:
     struct Impl;

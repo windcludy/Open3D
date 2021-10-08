@@ -286,6 +286,12 @@ endfunction()
 include(ProcessorCount)
 ProcessorCount(NPROC)
 
+# CUDAToolkit
+if(BUILD_CUDA_MODULE)
+    find_package(CUDAToolkit REQUIRED)
+    list(APPEND Open3D_3RDPARTY_EXTERNAL_MODULES "CUDAToolkit")
+endif()
+
 # Threads
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
 set(THREADS_PREFER_PTHREAD_FLAG TRUE) # -pthread instead of -lpthread
@@ -493,7 +499,7 @@ if(NOT USE_SYSTEM_JPEG)
     import_3rdparty_library(3rdparty_jpeg
         INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR}/libjpeg-turbo-install/include/
         LIBRARIES ${JPEG_TURBO_LIBRARIES}
-        LIB_DIR ${CMAKE_CURRENT_BINARY_DIR}/libjpeg-turbo-install/lib
+        LIB_DIR ${CMAKE_CURRENT_BINARY_DIR}/libjpeg-turbo-install/${Open3D_INSTALL_LIB_DIR}
     )
     add_dependencies(3rdparty_jpeg ext_turbojpeg)
     set(JPEG_TARGET "3rdparty_jpeg")
@@ -501,16 +507,14 @@ endif()
 list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS "${JPEG_TARGET}")
 
 # jsoncpp: always compile from source to avoid ABI issues.
-build_3rdparty_library(3rdparty_jsoncpp DIRECTORY jsoncpp
-    SOURCES
-        json_reader.cpp
-        json_value.cpp
-        json_writer.cpp
-    INCLUDE_DIRS
-        include/
+include(${Open3D_3RDPARTY_DIR}/jsoncpp/jsoncpp.cmake)
+import_3rdparty_library(3rdparty_jsoncpp
+    INCLUDE_DIRS ${JSONCPP_INCLUDE_DIRS}
+    LIB_DIR      ${JSONCPP_LIB_DIR}
+    LIBRARIES    ${JSONCPP_LIBRARIES}
 )
-target_compile_features(3rdparty_jsoncpp PUBLIC cxx_override cxx_noexcept cxx_rvalue_references)
 set(JSONCPP_TARGET "3rdparty_jsoncpp")
+add_dependencies(3rdparty_jsoncpp ext_jsoncpp)
 list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS "${JSONCPP_TARGET}")
 
 # liblzf
@@ -544,29 +548,42 @@ list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS "${TRITRIINTERSECT_TARGET}")
 
 # librealsense SDK
 if (BUILD_LIBREALSENSE)
-    include(${Open3D_3RDPARTY_DIR}/librealsense/librealsense.cmake)
-    import_3rdparty_library(3rdparty_librealsense
-        INCLUDE_DIRS ${LIBREALSENSE_INCLUDE_DIR}
-        LIBRARIES    ${LIBREALSENSE_LIBRARIES}
-        LIB_DIR      ${LIBREALSENSE_LIB_DIR}
-    )
-    add_dependencies(3rdparty_librealsense ext_librealsense)
-    set(LIBREALSENSE_TARGET "3rdparty_librealsense")
-    list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS "${LIBREALSENSE_TARGET}")
-
-    if (UNIX AND NOT APPLE)
-        # Ubuntu dependency: libusb-1.0.0-dev
-        find_library(LIBUSB_LIB usb-1.0)
-        find_path(LIBUSB_INC libusb.h HINTS PATH_SUFFIXES libusb-1.0)
-        if (NOT LIBUSB_LIB)
-            message(FATAL_ERROR "libusb-1.0 library not found, please install libusb-1.0.0-dev.")
+    if(USE_SYSTEM_LIBREALSENSE AND NOT GLIBCXX_USE_CXX11_ABI)
+        # Turn off USE_SYSTEM_LIBREALSENSE.
+        # Because it is affected by libraries built with different CXX ABIs.
+        # See details: https://github.com/intel-isl/Open3D/pull/2876
+        message(STATUS "Set USE_SYSTEM_LIBREALSENSE=OFF, because GLIBCXX_USE_CXX11_ABI is OFF.")
+        set(USE_SYSTEM_LIBREALSENSE OFF)
+    endif()
+    if(USE_SYSTEM_LIBREALSENSE)
+        find_package(realsense2)
+        if(TARGET realsense2::realsense2)
+            message(STATUS "Using installed third-party library librealsense")
+            if(NOT BUILD_SHARED_LIBS)
+                list(APPEND Open3D_3RDPARTY_EXTERNAL_MODULES "realsense2")
+            endif()
+            set(LIBREALSENSE_TARGET  "realsense2::realsense2")
+            list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS "${LIBREALSENSE_TARGET}")
+        else()
+            message(STATUS "Unable to find installed third-party library librealsense")
+            set(USE_SYSTEM_LIBREALSENSE OFF)
         endif()
-        if (NOT LIBUSB_INC)
-            message(FATAL_ERROR "libusb-1.0 header not found, please install libusb-1.0.0-dev.")
+    endif()
+    if(NOT USE_SYSTEM_LIBREALSENSE)
+        include(${Open3D_3RDPARTY_DIR}/librealsense/librealsense.cmake)
+        import_3rdparty_library(3rdparty_librealsense
+            INCLUDE_DIRS ${LIBREALSENSE_INCLUDE_DIR}
+            LIBRARIES    ${LIBREALSENSE_LIBRARIES}
+            LIB_DIR      ${LIBREALSENSE_LIB_DIR}
+        )
+        add_dependencies(3rdparty_librealsense ext_librealsense)
+        set(LIBREALSENSE_TARGET "3rdparty_librealsense")
+        list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS "${LIBREALSENSE_TARGET}")
+        if (UNIX AND NOT APPLE)    # Ubuntu dependency: libudev-dev
+            find_library(UDEV_LIBRARY udev REQUIRED
+                DOC "Library provided by the deb package libudev-dev")
+            target_link_libraries(3rdparty_librealsense INTERFACE ${UDEV_LIBRARY})
         endif()
-        message(STATUS "LIBUSB_LIB: ${LIBUSB_LIB}")
-        message(STATUS "LIBUSB_INC: ${LIBUSB_INC}")
-        target_link_libraries(3rdparty_librealsense INTERFACE ${LIBUSB_LIB})
     endif()
 endif()
 
@@ -579,25 +596,38 @@ if(USE_SYSTEM_PNG)
             list(APPEND Open3D_3RDPARTY_EXTERNAL_MODULES "PNG")
         endif()
         set(PNG_TARGET "PNG::PNG")
+        set(ZLIB_TARGET "ZLIB::ZLIB")
+        list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS "${PNG_TARGET}")
+        list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS "${ZLIB_TARGET}")
     else()
         message(STATUS "Unable to find installed third-party library libpng")
         set(USE_SYSTEM_PNG OFF)
     endif()
 endif()
 if(NOT USE_SYSTEM_PNG)
-    message(STATUS "Building third-party library zlib from source")
-    add_subdirectory(${Open3D_3RDPARTY_DIR}/zlib)
-    import_3rdparty_library(3rdparty_zlib INCLUDE_DIRS ${Open3D_3RDPARTY_DIR}/zlib LIBRARIES ${ZLIB_LIBRARY})
-    add_dependencies(3rdparty_zlib ${ZLIB_LIBRARY})
-    message(STATUS "Building third-party library libpng from source")
-    add_subdirectory(${Open3D_3RDPARTY_DIR}/libpng)
-    import_3rdparty_library(3rdparty_png INCLUDE_DIRS ${Open3D_3RDPARTY_DIR}/libpng/ LIBRARIES ${PNG_LIBRARIES})
-    add_dependencies(3rdparty_png ${PNG_LIBRARIES})
-    target_link_libraries(3rdparty_png INTERFACE 3rdparty_zlib)
-    set(PNG_TARGET "3rdparty_png")
+    include(${Open3D_3RDPARTY_DIR}/zlib/zlib.cmake)
+    import_3rdparty_library(3rdparty_zlib
+        INCLUDE_DIRS ${ZLIB_INCLUDE_DIRS}
+        LIB_DIR      ${ZLIB_LIB_DIR}
+        LIBRARIES    ${ZLIB_LIBRARIES}
+    )
     set(ZLIB_TARGET "3rdparty_zlib")
+    add_dependencies(3rdparty_zlib ext_zlib)
+
+    include(${Open3D_3RDPARTY_DIR}/libpng/libpng.cmake)
+    import_3rdparty_library(3rdparty_libpng
+        INCLUDE_DIRS ${LIBPNG_INCLUDE_DIRS}
+        LIB_DIR      ${LIBPNG_LIB_DIR}
+        LIBRARIES    ${LIBPNG_LIBRARIES}
+    )
+    set(PNG_TARGET "3rdparty_libpng")
+    add_dependencies(3rdparty_libpng ext_libpng)
+    add_dependencies(ext_libpng ext_zlib)
+
+    # Putting zlib after libpng somehow works for Ubuntu.
+    list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS "${PNG_TARGET}")
+    list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS "${ZLIB_TARGET}")
 endif()
-list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS "${PNG_TARGET}")
 
 # rply
 build_3rdparty_library(3rdparty_rply DIRECTORY rply SOURCES rply/rply.c INCLUDE_DIRS rply/)
@@ -865,6 +895,7 @@ endif()
 
 # Filament
 if(BUILD_GUI)
+    set(FILAMENT_RUNTIME_VER "")
     if(BUILD_FILAMENT_FROM_SOURCE)
         message(STATUS "Building third-party library Filament from source")
         if(MSVC OR (CMAKE_C_COMPILER_ID MATCHES ".*Clang" AND
@@ -890,8 +921,8 @@ if(BUILD_GUI)
             endif()
             # If the default version is not sufficient, look for some specific versions
             if(NOT FILAMENT_C_COMPILER OR NOT FILAMENT_CXX_COMPILER)
-                find_program(CLANG_VERSIONED_CC NAMES clang-11 clang-10 clang-9 clang-8 clang-7)
-                find_program(CLANG_VERSIONED_CXX NAMES clang++11 clang++-10 clang++-9 clang++-8 clang++-7)
+                find_program(CLANG_VERSIONED_CC NAMES clang-12 clang-11 clang-10 clang-9 clang-8 clang-7)
+                find_program(CLANG_VERSIONED_CXX NAMES clang++-12 clang++11 clang++-10 clang++-9 clang++-8 clang++-7)
                 if (CLANG_VERSIONED_CC AND CLANG_VERSIONED_CXX)
                     set(FILAMENT_C_COMPILER "${CLANG_VERSIONED_CC}")
                     set(FILAMENT_CXX_COMPILER "${CLANG_VERSIONED_CXX}")
@@ -901,33 +932,39 @@ if(BUILD_GUI)
                 endif()
             endif()
         endif()
-        # Find corresponding libc++ and libc++abi libraries. On Ubuntu, clang
-        # libraries are located at /usr/lib/llvm-{version}/lib, and the default
-        # version will have a sybolic link at /usr/lib/x86_64-linux-gnu/ or
-        # /usr/lib/aarch64-linux-gnu.
-        # For aarch64, the symbolic link path may not work for CMake's
-        # find_library. Therefore, when compiling Filament from source, we
-        # explicitly find the corresponidng path based on the clang version.
-        execute_process(COMMAND ${FILAMENT_CXX_COMPILER} --version OUTPUT_VARIABLE clang_version)
-        if(clang_version MATCHES "clang version ([0-9]+)")
-            set(CLANG_LIBDIR "/usr/lib/llvm-${CMAKE_MATCH_1}/lib")
+        if (UNIX AND NOT APPLE)
+            # Find corresponding libc++ and libc++abi libraries. On Ubuntu, clang
+            # libraries are located at /usr/lib/llvm-{version}/lib, and the default
+            # version will have a sybolic link at /usr/lib/x86_64-linux-gnu/ or
+            # /usr/lib/aarch64-linux-gnu.
+            # For aarch64, the symbolic link path may not work for CMake's
+            # find_library. Therefore, when compiling Filament from source, we
+            # explicitly find the corresponidng path based on the clang version.
+            execute_process(COMMAND ${FILAMENT_CXX_COMPILER} --version OUTPUT_VARIABLE clang_version)
+            if(clang_version MATCHES "clang version ([0-9]+)")
+                set(CLANG_LIBDIR "/usr/lib/llvm-${CMAKE_MATCH_1}/lib")
+            endif()
         endif()
         include(${Open3D_3RDPARTY_DIR}/filament/filament_build.cmake)
     else()
         message(STATUS "Using prebuilt third-party library Filament")
         include(${Open3D_3RDPARTY_DIR}/filament/filament_download.cmake)
-    endif()
-    set(FILAMENT_RUNTIME_VER "")
-    if (WIN32)
-        if (STATIC_WINDOWS_RUNTIME)
-            set(FILAMENT_RUNTIME_VER "mt$<$<CONFIG:DEBUG>:d>")
-        else()
-            set(FILAMENT_RUNTIME_VER "md$<$<CONFIG:DEBUG>:d>")
+        # Set lib directory for filament v1.9.9 on Windows.
+        # Assume newer version if FILAMENT_PRECOMPILED_ROOT is set.
+        if (WIN32 AND NOT FILAMENT_PRECOMPILED_ROOT)
+            if (STATIC_WINDOWS_RUNTIME)
+                set(FILAMENT_RUNTIME_VER "x86_64/mt$<$<CONFIG:DEBUG>:d>")
+            else()
+                set(FILAMENT_RUNTIME_VER "x86_64/md$<$<CONFIG:DEBUG>:d>")
+            endif()
         endif()
+    endif()
+    if (APPLE)
+        set(FILAMENT_RUNTIME_VER x86_64)
     endif()
     import_3rdparty_library(3rdparty_filament HEADER
         INCLUDE_DIRS ${FILAMENT_ROOT}/include/
-        LIB_DIR ${FILAMENT_ROOT}/lib/x86_64/${FILAMENT_RUNTIME_VER}
+        LIB_DIR ${FILAMENT_ROOT}/lib/${FILAMENT_RUNTIME_VER}
         LIBRARIES ${filament_LIBRARIES}
     )
     set(FILAMENT_MATC "${FILAMENT_ROOT}/bin/matc")
@@ -936,19 +973,13 @@ if(BUILD_GUI)
         # Find CLANG_LIBDIR if it is not defined. Mutiple paths will be searched.
         if (NOT CLANG_LIBDIR)
             find_library(CPPABI_LIBRARY c++abi PATH_SUFFIXES
-                         llvm-11/lib llvm-10/lib llvm-9/lib llvm-8/lib llvm-7/lib
+                         llvm-12/lib llvm-11/lib llvm-10/lib llvm-9/lib llvm-8/lib llvm-7/lib
                          REQUIRED)
             get_filename_component(CLANG_LIBDIR ${CPPABI_LIBRARY} DIRECTORY)
         endif()
         # Find clang libraries at the exact path ${CLANG_LIBDIR}.
         find_library(CPP_LIBRARY    c++    PATHS ${CLANG_LIBDIR} REQUIRED NO_DEFAULT_PATH)
         find_library(CPPABI_LIBRARY c++abi PATHS ${CLANG_LIBDIR} REQUIRED NO_DEFAULT_PATH)
-        if(CPP_LIBRARY-NOTFOUND)
-            message(FATAL_ERROR "CPP_LIBRARY-NOTFOUND")
-        endif()
-        if(CPPABI_LIBRARY-NOTFOUND)
-            message(FATAL_ERROR "CPPABI_LIBRARY-NOTFOUND")
-        endif()
         # Ensure that libstdc++ gets linked first
         target_link_libraries(3rdparty_filament INTERFACE -lstdc++
                               ${CPP_LIBRARY} ${CPPABI_LIBRARY})
@@ -1022,6 +1053,11 @@ set(TBB_TARGET "3rdparty_tbb")
 add_dependencies(3rdparty_tbb ext_tbb)
 list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS "${TBB_TARGET}")
 
+# parallelstl
+build_3rdparty_library(3rdparty_parallelstl DIRECTORY parallelstl INCLUDE_DIRS include/ INCLUDE_ALL)
+set(PARALLELSTL_TARGET "3rdparty_parallelstl")
+list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS "${PARALLELSTL_TARGET}")
+
 if(USE_BLAS)
     # Try to locate system BLAS/LAPACK
     find_package(BLAS)
@@ -1033,8 +1069,8 @@ if(USE_BLAS)
         list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS "${LAPACK_LIBRARIES}")
         list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS "${LAPACKE_LIBRARIES}")
         if(BUILD_CUDA_MODULE)
-            list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS "${CUDA_cusolver_LIBRARY}")
-            list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS "${CUDA_CUBLAS_LIBRARIES}")
+            list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS CUDA::cusolver)
+            list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS CUDA::cublas)
         endif()
     elseif(NOT IOS)
         # Compile OpenBLAS/Lapack from source. Install gfortran on Ubuntu first.
@@ -1051,9 +1087,7 @@ if(USE_BLAS)
         add_dependencies(3rdparty_openblas ext_openblas)
         target_link_libraries(3rdparty_openblas INTERFACE Threads::Threads gfortran)
         if(BUILD_CUDA_MODULE)
-            target_link_libraries(3rdparty_openblas INTERFACE
-                                ${CUDA_cusolver_LIBRARY}
-                                ${CUDA_CUBLAS_LIBRARIES})
+            target_link_libraries(3rdparty_openblas INTERFACE CUDA::cusolver CUDA::cublas)
         endif()
         list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS "${OPENBLAS_TARGET}")
     endif()
@@ -1075,16 +1109,13 @@ else()
     message(STATUS "STATIC_MKL_LIB_DIR: ${STATIC_MKL_LIB_DIR}")
     message(STATUS "STATIC_MKL_LIBRARIES: ${STATIC_MKL_LIBRARIES}")
     if(UNIX)
-        target_compile_options(3rdparty_mkl INTERFACE "-DMKL_ILP64 -m64")
+        target_compile_options(3rdparty_mkl INTERFACE "$<$<COMPILE_LANGUAGE:CXX>:-m64>")
         target_link_libraries(3rdparty_mkl INTERFACE Threads::Threads ${CMAKE_DL_LIBS})
-        # cuSOLVER and cuBLAS
-        if(BUILD_CUDA_MODULE)
-            target_link_libraries(3rdparty_mkl INTERFACE
-                                ${CUDA_cusolver_LIBRARY}
-                                ${CUDA_CUBLAS_LIBRARIES})
-        endif()
-    elseif(MSVC)
-        target_compile_options(3rdparty_mkl INTERFACE "/DMKL_ILP64")
+    endif()
+    target_compile_definitions(3rdparty_mkl INTERFACE "$<$<COMPILE_LANGUAGE:CXX>:MKL_ILP64>")
+    # cuSOLVER and cuBLAS
+    if(BUILD_CUDA_MODULE)
+        target_link_libraries(3rdparty_mkl INTERFACE CUDA::cusolver CUDA::cublas)
     endif()
     list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS "${MKL_TARGET}")
 endif()
@@ -1121,3 +1152,98 @@ if (WITH_FAISS)
     target_link_libraries(3rdparty_faiss INTERFACE ${CMAKE_DL_LIBS})
 endif()
 list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS "${FAISS_TARGET}")
+
+# NPP
+if (BUILD_CUDA_MODULE)
+    # NPP library list: https://docs.nvidia.com/cuda/npp/index.html
+    add_library(3rdparty_CUDA_NPP INTERFACE)
+    target_link_libraries(3rdparty_CUDA_NPP INTERFACE CUDA::nppc CUDA::nppicc
+        CUDA::nppif CUDA::nppig CUDA::nppim CUDA::nppial)
+    if(NOT BUILD_SHARED_LIBS)
+        install(TARGETS 3rdparty_CUDA_NPP EXPORT ${PROJECT_NAME}Targets)
+    endif()
+    set(CUDA_NPP_TARGET 3rdparty_CUDA_NPP)
+    list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS ${CUDA_NPP_TARGET})
+endif ()
+
+# IPP
+if (WITH_IPPICV)
+    # Ref: https://stackoverflow.com/a/45125525
+    set(IPPICV_SUPPORTED_HW AMD64 x86_64 x64 x86 X86 i386 i686)
+    # Unsupported: ARM64 aarch64 armv7l armv8b armv8l ...
+    if (NOT CMAKE_HOST_SYSTEM_PROCESSOR IN_LIST IPPICV_SUPPORTED_HW)
+        set(WITH_IPPICV OFF)
+        message(WARNING "IPP-ICV disabled: Unsupported Platform.")
+    else ()
+        include(${Open3D_3RDPARTY_DIR}/ippicv/ippicv.cmake)
+        if (WITH_IPPICV)
+            message(STATUS "IPP-ICV ${IPPICV_VERSION_STRING} available. Building interface wrappers IPP-IW.")
+            import_3rdparty_library(3rdparty_ippicv
+                INCLUDE_DIRS "${IPPICV_INCLUDE_DIR}"
+                LIBRARIES     ${IPPICV_LIBRARIES}
+                LIB_DIR      "${IPPICV_LIB_DIR}"
+                )
+            add_dependencies(3rdparty_ippicv ext_ippicv)
+            target_compile_definitions(3rdparty_ippicv INTERFACE
+                ${IPPICV_DEFINITIONS})
+            set(IPPICV_TARGET "3rdparty_ippicv")
+            list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS "${IPPICV_TARGET}")
+        endif()
+    endif()
+endif ()
+
+# Stdgpu
+if (BUILD_CUDA_MODULE)
+    include(${Open3D_3RDPARTY_DIR}/stdgpu/stdgpu.cmake)
+    import_3rdparty_library(3rdparty_stdgpu
+        INCLUDE_DIRS ${STDGPU_INCLUDE_DIRS}
+        LIB_DIR      ${STDGPU_LIB_DIR}
+        LIBRARIES    ${STDGPU_LIBRARIES}
+    )
+    set(STDGPU_TARGET "3rdparty_stdgpu")
+    add_dependencies(3rdparty_stdgpu ext_stdgpu)
+    list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS "${STDGPU_TARGET}")
+endif ()
+
+# WebRTC
+if(BUILD_WEBRTC)
+    # Incude WebRTC headers in Open3D.h.
+    set(BUILD_WEBRTC_COMMENT "")
+
+    # Build WebRTC from source for advanced users.
+    option(BUILD_WEBRTC_FROM_SOURCE "Build WebRTC from source" OFF)
+    mark_as_advanced(BUILD_WEBRTC_FROM_SOURCE)
+
+    # WebRTC
+    if(BUILD_WEBRTC_FROM_SOURCE)
+        include(${Open3D_3RDPARTY_DIR}/webrtc/webrtc_build.cmake)
+    else()
+        include(${Open3D_3RDPARTY_DIR}/webrtc/webrtc_download.cmake)
+    endif()
+    import_3rdparty_library(3rdparty_webrtc
+        INCLUDE_DIRS ${WEBRTC_INCLUDE_DIRS}
+        LIB_DIR      ${WEBRTC_LIB_DIR}
+        LIBRARIES    ${WEBRTC_LIBRARIES}
+    )
+    set(WEBRTC_TARGET "3rdparty_webrtc")
+    add_dependencies(3rdparty_webrtc ext_webrtc_all)
+    list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS "${WEBRTC_TARGET}")
+    target_link_libraries(3rdparty_webrtc INTERFACE Threads::Threads ${CMAKE_DL_LIBS})
+    if (MSVC) # https://github.com/iimachines/webrtc-build/issues/2#issuecomment-503535704
+        target_link_libraries(3rdparty_webrtc INTERFACE secur32 winmm dmoguids wmcodecdspuuid msdmo strmiids)
+    endif()
+
+    # CivetWeb server
+    include(${Open3D_3RDPARTY_DIR}/civetweb/civetweb.cmake)
+    import_3rdparty_library(3rdparty_civetweb
+        INCLUDE_DIRS ${CIVETWEB_INCLUDE_DIRS}
+        LIB_DIR      ${CIVETWEB_LIB_DIR}
+        LIBRARIES    ${CIVETWEB_LIBRARIES}
+    )
+    set(CIVETWEB_TARGET "3rdparty_civetweb")
+    add_dependencies(3rdparty_civetweb ext_civetweb)
+    list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS "${CIVETWEB_TARGET}")
+else()
+    # Don't incude WebRTC headers in Open3D.h.
+    set(BUILD_WEBRTC_COMMENT "//")
+endif()

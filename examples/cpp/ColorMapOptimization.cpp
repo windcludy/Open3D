@@ -28,14 +28,25 @@
 
 #include "open3d/Open3D.h"
 
+void PrintHelp() {
+    using namespace open3d;
+
+    PrintOpen3DVersion();
+    // clang-format off
+    utility::LogInfo("Usage:");
+    utility::LogInfo(">    ColorMapOptimization [data_dir]");
+    // clang-format on
+    utility::LogInfo("");
+}
+
 int main(int argc, char *argv[]) {
     using namespace open3d;
     using namespace open3d::utility::filesystem;
     utility::SetVerbosityLevel(utility::VerbosityLevel::Debug);
 
-    if (argc != 2) {
-        utility::LogInfo("Usage :");
-        utility::LogInfo(">    ColorMapOptimization data_dir");
+    if (argc != 2 ||
+        utility::ProgramOptionExistsAny(argc, argv, {"-h", "--help"})) {
+        PrintHelp();
         return 1;
     }
     // Read RGBD images
@@ -46,7 +57,10 @@ int main(int argc, char *argv[]) {
     ListFilesInDirectoryWithExtension(data_path + "/image/", "jpg",
                                       color_filenames);
     assert(depth_filenames.size() == color_filenames.size());
-    std::vector<std::shared_ptr<geometry::RGBDImage>> rgbd_images;
+    std::sort(depth_filenames.begin(), depth_filenames.end());
+    std::sort(color_filenames.begin(), color_filenames.end());
+
+    std::vector<geometry::RGBDImage> rgbd_images;
     for (size_t i = 0; i < depth_filenames.size(); i++) {
         utility::LogDebug("reading {}...", depth_filenames[i]);
         auto depth = io::CreateImageFromFile(depth_filenames[i]);
@@ -54,23 +68,24 @@ int main(int argc, char *argv[]) {
         auto color = io::CreateImageFromFile(color_filenames[i]);
         auto rgbd_image = geometry::RGBDImage::CreateFromColorAndDepth(
                 *color, *depth, 1000.0, 3.0, false);
-        rgbd_images.push_back(rgbd_image);
+        rgbd_images.push_back(*rgbd_image);
     }
-    auto camera = io::CreatePinholeCameraTrajectoryFromFile(data_path +
-                                                            "/scene/key.log");
-    auto mesh = io::CreateMeshFromFile(data_path + "/scene/integrated.ply");
+    std::shared_ptr<camera::PinholeCameraTrajectory> camera =
+            io::CreatePinholeCameraTrajectoryFromFile(data_path +
+                                                      "/scene/key.log");
+    std::shared_ptr<geometry::TriangleMesh> mesh =
+            io::CreateMeshFromFile(data_path + "/scene/integrated.ply");
 
     // Optimize texture and save the mesh as texture_mapped.ply
     // This is implementation of following paper
     // Q.-Y. Zhou and V. Koltun,
     // Color Map Optimization for 3D Reconstruction with Consumer Depth Cameras,
     // SIGGRAPH 2014
-    pipelines::color_map::ColorMapOptimizationOption option;
-    option.maximum_iteration_ = 300;
-    option.non_rigid_camera_coordinate_ = true;
-    pipelines::color_map::ColorMapOptimization(*mesh, rgbd_images, *camera,
-                                               option);
-    io::WriteTriangleMesh("color_map_after_optimization.ply", *mesh);
+    pipelines::color_map::NonRigidOptimizerOption non_rigid_option;  // Default
+    geometry::TriangleMesh optimized_mesh =
+            pipelines::color_map::RunNonRigidOptimizer(
+                    *mesh, rgbd_images, *camera, non_rigid_option);
+    io::WriteTriangleMesh("color_map_after_optimization.ply", optimized_mesh);
 
     return 0;
 }

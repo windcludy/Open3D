@@ -85,20 +85,16 @@ std::shared_ptr<gui::Dialog> CreateAboutDialog(gui::Window *window) {
             (std::string("Open3D ") + OPEN3D_VERSION).c_str());
     auto text = std::make_shared<gui::Label>(
             "The MIT License (MIT)\n"
-            "Copyright (c) 2018 - 2020 www.open3d.org\n\n"
+            "Copyright (c) 2018 - 2021 www.open3d.org\n\n"
 
             "Permission is hereby granted, free of charge, to any person "
-            "obtaining "
-            "a copy of this software and associated documentation files (the "
-            "\"Software\"), to deal in the Software without restriction, "
-            "including "
-            "without limitation the rights to use, copy, modify, merge, "
-            "publish, "
-            "distribute, sublicense, and/or sell copies of the Software, and "
-            "to "
-            "permit persons to whom the Software is furnished to do so, "
-            "subject to "
-            "the following conditions:\n\n"
+            "obtaining a copy of this software and associated documentation "
+            "files (the \"Software\"), to deal in the Software without "
+            "restriction, including without limitation the rights to use, "
+            "copy, modify, merge, publish, distribute, sublicense, and/or "
+            "sell copies of the Software, and to permit persons to whom "
+            "the Software is furnished to do so, subject to the following "
+            "conditions:\n\n"
 
             "The above copyright notice and this permission notice shall be "
             "included in all copies or substantial portions of the "
@@ -106,15 +102,12 @@ std::shared_ptr<gui::Dialog> CreateAboutDialog(gui::Window *window) {
 
             "THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, "
             "EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES "
-            "OF "
-            "MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND "
-            "NONINFRINGEMENT. "
-            "IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR "
-            "ANY "
-            "CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF "
-            "CONTRACT, "
-            "TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE "
-            "SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.");
+            "OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND "
+            "NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT "
+            "HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, "
+            "WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING "
+            "FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR "
+            "OTHER DEALINGS IN THE SOFTWARE.");
     auto ok = std::make_shared<gui::Button>("OK");
     ok->SetOnClicked([window]() { window->CloseDialog(); });
 
@@ -122,7 +115,9 @@ std::shared_ptr<gui::Dialog> CreateAboutDialog(gui::Window *window) {
     auto layout = std::make_shared<gui::Vert>(0, margins);
     layout->AddChild(gui::Horiz::MakeCentered(title));
     layout->AddFixed(theme.font_size);
-    layout->AddChild(text);
+    auto v = std::make_shared<gui::ScrollableVert>(0);
+    v->AddChild(text);
+    layout->AddChild(v);
     layout->AddFixed(theme.font_size);
     layout->AddChild(gui::Horiz::MakeCentered(ok));
     dlg->AddChild(layout);
@@ -296,9 +291,10 @@ class DrawTimeLabel : public gui::Label {
 public:
     DrawTimeLabel(gui::Window *w) : Label("0.0 ms") { window_ = w; }
 
-    gui::Size CalcPreferredSize(const gui::Theme &theme) const override {
-        auto h = Super::CalcPreferredSize(theme).height;
-        return gui::Size(theme.font_size * 5, h);
+    gui::Size CalcPreferredSize(const gui::LayoutContext &context,
+                                const Constraints &constraints) const override {
+        auto h = Super::CalcPreferredSize(context, constraints).height;
+        return gui::Size(context.theme.font_size * 5, h);
     }
 
     DrawResult Draw(const gui::DrawContext &context) override {
@@ -356,6 +352,8 @@ struct GuiVisualizer::Impl {
 
     int app_menu_custom_items_index_ = -1;
     std::shared_ptr<gui::Menu> app_menu_;
+
+    bool sun_follows_camera_ = false;
 
     void InitializeMaterials(rendering::Renderer &renderer,
                              const std::string &resource_path) {
@@ -417,9 +415,11 @@ struct GuiVisualizer::Impl {
         } else {
             scene_wgt_->GetScene()->ShowSkybox(false);
         }
-        scene_wgt_->ShowSkybox(settings_.model_.GetShowSkybox());
 
         scene_wgt_->GetScene()->ShowAxes(settings_.model_.GetShowAxes());
+        scene_wgt_->GetScene()->ShowGroundPlane(
+                settings_.model_.GetShowGround(),
+                rendering::Scene::GroundPlane::XZ);
 
         UpdateLighting(renderer, settings_.model_.GetLighting());
 
@@ -491,11 +491,33 @@ private:
             this->SetIBL(renderer, "");
         }
 
+        if (sun_follows_camera_ != settings_.model_.GetSunFollowsCamera()) {
+            sun_follows_camera_ = settings_.model_.GetSunFollowsCamera();
+            if (sun_follows_camera_) {
+                scene_wgt_->SetOnCameraChanged([this](rendering::Camera *cam) {
+                    auto render_scene = scene_wgt_->GetScene()->GetScene();
+                    render_scene->SetSunLightDirection(cam->GetForwardVector());
+                });
+                render_scene->SetSunLightDirection(
+                        scene->GetCamera()->GetForwardVector());
+                settings_.wgt_mouse_sun->SetEnabled(false);
+                scene_wgt_->SetSunInteractorEnabled(false);
+            } else {
+                scene_wgt_->SetOnCameraChanged(
+                        std::function<void(rendering::Camera *)>());
+                settings_.wgt_mouse_sun->SetEnabled(true);
+                scene_wgt_->SetSunInteractorEnabled(true);
+            }
+        }
+
         render_scene->EnableIndirectLight(lighting.ibl_enabled);
         render_scene->SetIndirectLightIntensity(float(lighting.ibl_intensity));
         render_scene->SetIndirectLightRotation(lighting.ibl_rotation);
-        render_scene->SetSunLight(lighting.sun_dir, lighting.sun_color,
-                                  float(lighting.sun_intensity));
+        render_scene->SetSunLightColor(lighting.sun_color);
+        render_scene->SetSunLightIntensity(float(lighting.sun_intensity));
+        if (!sun_follows_camera_) {
+            render_scene->SetSunLightDirection(lighting.sun_dir);
+        }
         render_scene->EnableSunLight(lighting.sun_enabled);
     }
 
@@ -610,7 +632,7 @@ void GuiVisualizer::Init() {
         help_menu->AddSeparator();
         help_menu->AddItem("About", HELP_ABOUT);
         help_menu->AddItem("Contact", HELP_CONTACT);
-#if defined(__APPLE__) && GUI_USE_NATIVE_MENUS
+#if defined(__APPLE__)
         // macOS adds a special search item to menus named "Help",
         // so add a space to avoid that.
         menu->AddMenu("Help ", help_menu);
@@ -639,7 +661,6 @@ void GuiVisualizer::Init() {
     auto ibl_path = resource_path + "/default";
     auto *render_scene = impl_->scene_wgt_->GetScene()->GetScene();
     render_scene->SetIndirectLight(ibl_path);
-    impl_->scene_wgt_->ShowSkybox(settings.model_.GetShowSkybox());
 
     // Create materials
     impl_->InitializeMaterials(GetRenderer(), resource_path);
@@ -772,6 +793,7 @@ void GuiVisualizer::SetGeometry(
     if (loaded_model) {
         scene3d->AddModel(MODEL_NAME, impl_->loaded_model_);
         impl_->settings_.model_.SetDisplayingPointClouds(false);
+        loaded_material.shader = "defaultLit";
     } else {
         // NOTE: If a model was NOT loaded then these must be point clouds
         std::shared_ptr<const geometry::Geometry> g = geometry;
@@ -817,9 +839,9 @@ void GuiVisualizer::SetGeometry(
     // Setup UI for loaded model/point cloud
     impl_->settings_.model_.UnsetCustomDefaultColor();
     if (loaded_model) {
+        impl_->settings_.view_->ShowFileMaterialEntry(true);
         impl_->settings_.model_.SetCurrentMaterials(
                 GuiSettingsModel::MATERIAL_FROM_FILE_NAME);
-        impl_->settings_.view_->ShowFileMaterialEntry(true);
     } else {
         impl_->settings_.view_->ShowFileMaterialEntry(false);
     }
@@ -833,38 +855,50 @@ void GuiVisualizer::SetGeometry(
     impl_->scene_wgt_->ForceRedraw();
 }
 
-void GuiVisualizer::Layout(const gui::Theme &theme) {
+void GuiVisualizer::Layout(const gui::LayoutContext &context) {
     auto r = GetContentRect();
-    const auto em = theme.font_size;
+    const auto em = context.theme.font_size;
     impl_->scene_wgt_->SetFrame(r);
 
     // Draw help keys HUD in upper left
-    const auto pref = impl_->help_keys_->CalcPreferredSize(theme);
+    const auto pref = impl_->help_keys_->CalcPreferredSize(
+            context, gui::Widget::Constraints());
     impl_->help_keys_->SetFrame(gui::Rect(0, r.y, pref.width, pref.height));
-    impl_->help_keys_->Layout(theme);
+    impl_->help_keys_->Layout(context);
 
     // Draw camera HUD in lower left
-    const auto prefcam = impl_->help_camera_->CalcPreferredSize(theme);
+    const auto prefcam = impl_->help_camera_->CalcPreferredSize(
+            context, gui::Widget::Constraints());
     impl_->help_camera_->SetFrame(gui::Rect(0, r.height + r.y - prefcam.height,
                                             prefcam.width, prefcam.height));
-    impl_->help_camera_->Layout(theme);
+    impl_->help_camera_->Layout(context);
 
     // Settings in upper right
     const auto LIGHT_SETTINGS_WIDTH = 18 * em;
-    auto light_settings_size =
-            impl_->settings_.wgt_base->CalcPreferredSize(theme);
+    auto light_settings_size = impl_->settings_.wgt_base->CalcPreferredSize(
+            context, gui::Widget::Constraints());
     gui::Rect lightSettingsRect(r.width - LIGHT_SETTINGS_WIDTH, r.y,
                                 LIGHT_SETTINGS_WIDTH,
                                 std::min(r.height, light_settings_size.height));
     impl_->settings_.wgt_base->SetFrame(lightSettingsRect);
 
-    Super::Layout(theme);
+    Super::Layout(context);
 }
 
 void GuiVisualizer::StartRPCInterface(const std::string &address, int timeout) {
 #ifdef BUILD_RPC_INTERFACE
-    impl_->receiver_ = std::make_shared<Receiver>(
-            this, impl_->scene_wgt_->GetScene(), address, timeout);
+    auto on_geometry = [this](std::shared_ptr<geometry::Geometry3D> geom,
+                              const std::string &path, int time,
+                              const std::string &layer) {
+        // Rather than duplicating the logic to figure out the correct material,
+        // just add with the default material and pretend the user changed the
+        // current material and update everyone's material.
+        impl_->scene_wgt_->GetScene()->AddGeometry(path, geom.get(),
+                                                   rendering::Material());
+        impl_->UpdateFromModel(GetRenderer(), true);
+    };
+    impl_->receiver_ =
+            std::make_shared<Receiver>(address, timeout, this, on_geometry);
     try {
         utility::LogInfo("Starting to listen on {}", address);
         impl_->receiver_->Start();
@@ -923,9 +957,16 @@ void GuiVisualizer::LoadGeometry(const std::string &path) {
 
         bool model_success = false;
         if (geometry_type & io::CONTAINS_TRIANGLES) {
+            const float ioProgressAmount = 1.0f;
             try {
-                model_success = io::ReadTriangleModel(
-                        path, impl_->loaded_model_, false);
+                io::ReadTriangleModelOptions opt;
+                opt.update_progress = [ioProgressAmount,
+                                       UpdateProgress](double percent) -> bool {
+                    UpdateProgress(ioProgressAmount * float(percent / 100.0));
+                    return true;
+                };
+                model_success =
+                        io::ReadTriangleModel(path, impl_->loaded_model_, opt);
             } catch (...) {
                 model_success = false;
             }
@@ -1055,7 +1096,7 @@ void GuiVisualizer::OnMenuItemSelected(gui::Menu::ItemId item_id) {
 
             // We need relayout because materials settings pos depends on light
             // settings visibility
-            Layout(GetTheme());
+            this->SetNeedsLayout();
 
             break;
         }
