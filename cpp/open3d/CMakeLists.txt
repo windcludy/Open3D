@@ -20,9 +20,11 @@ configure_file("${PROJECT_SOURCE_DIR}/cpp/open3d/Open3DConfig.h.in"
 add_subdirectory(camera)
 add_subdirectory(core)
 add_subdirectory(geometry)
+if(NOT IOS)
 add_subdirectory(t/geometry)
 add_subdirectory(t/io)
 add_subdirectory(t/pipelines)
+endif()
 add_subdirectory(io)
 add_subdirectory(ml)
 add_subdirectory(pipelines)
@@ -60,12 +62,9 @@ add_library(${CMAKE_PROJECT_NAME}
     $<TARGET_OBJECTS:camera>
     $<TARGET_OBJECTS:core>
     $<TARGET_OBJECTS:geometry>
-    $<TARGET_OBJECTS:tgeometry>
     $<TARGET_OBJECTS:io>
-    $<TARGET_OBJECTS:tio>
     $<TARGET_OBJECTS:ml_contrib>
     $<TARGET_OBJECTS:pipelines>
-    $<TARGET_OBJECTS:tpipelines>
     $<TARGET_OBJECTS:utility>
     ${VISUALIZATION_OBJECTS}
     ${GUI_OBJECTS}

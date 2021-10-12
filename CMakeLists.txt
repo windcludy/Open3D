@@ -6,6 +6,7 @@ cmake_minimum_required(VERSION 3.18)
 # compile flags and setting global hardened link flags.
 
 if (APPLE)
+cmake_policy(SET CMP0114 NEW)
 set (CMAKE_OSX_DEPLOYMENT_TARGET "10.14" CACHE STRING
     "Minimum OS X deployment version" FORCE)
 endif()
@@ -370,10 +371,12 @@ add_compile_options(
     "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=${CUDA_HARDENING_CFLAGS}>"
     "$<$<COMPILE_LANGUAGE:CXX>:${HARDENING_CFLAGS}>"
     )
+if(NOT IOS)
 add_link_options(
     "$<$<COMPILE_LANGUAGE:CUDA>:-Xcompiler=${CUDA_HARDENING_LDFLAGS}>"
     "$<$<COMPILE_LANGUAGE:CXX>:${HARDENING_LDFLAGS}>"
     )
+endif()
 
 # Build CUDA module by default if CUDA is available
 if(BUILD_CUDA_MODULE)

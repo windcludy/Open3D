@@ -43,6 +43,36 @@ xcodebuild -create-xcframework \
   -output build/turbojpeg/src/ext_turbojpeg-build/JPEG.xcframework
 
 
+# png
+
+xcodebuild -project build/libpng/src/ext_libpng-build/libpng.xcodeproj -target png_static -configuration Release -sdk iphoneos -xcconfig $XCCONFIG
+xcodebuild -project build/libpng/src/ext_libpng-build/libpng.xcodeproj -target png_static -configuration Release -sdk iphonesimulator -xcconfig $XCCONFIG
+
+rm -rf build/libpng/src/ext_libpng-build/libpng.a.xcframework
+
+xcodebuild -create-xcframework \
+  -library build/libpng/src/ext_libpng-build/Release-iphoneos/libpng16.a \
+  -library build/libpng/src/ext_libpng-build/Release-iphonesimulator/libpng16.a \
+  -output build/libpng/src/ext_libpng-build/libpng.a.xcframework
+
+
+# jsoncpp
+
+xcodebuild -project build/jsoncpp/src/ext_jsoncpp-build/jsoncpp.xcodeproj -target jsoncpp_static -configuration Release -sdk iphoneos -xcconfig $XCCONFIG
+
+rm -f build/jsoncpp/src/ext_jsoncpp-build/lib/Release/libjsoncpp-iOS.a
+mv build/jsoncpp/src/ext_jsoncpp-build/lib/Release/libjsoncpp.a build/jsoncpp/src/ext_jsoncpp-build/lib/Release/libjsoncpp-iOS.a
+
+xcodebuild -project build/jsoncpp/src/ext_jsoncpp-build/jsoncpp.xcodeproj -target jsoncpp_static -configuration Release -sdk iphonesimulator -xcconfig $XCCONFIG
+
+rm -rf build/jsoncpp/src/ext_jsoncpp-build/libOpen3D_3rdparty_jsoncpp.a.xcframework
+
+xcodebuild -create-xcframework \
+  -library build/jsoncpp/src/ext_jsoncpp-build/lib/Release/libjsoncpp-iOS.a \
+  -library build/jsoncpp/src/ext_jsoncpp-build/lib/Release/libjsoncpp.a \
+  -output build/jsoncpp/src/ext_jsoncpp-build/libOpen3D_3rdparty_jsoncpp.a.xcframework
+
+
 # Faiss
 
 xcodebuild -project build/faiss/src/ext_faiss-build/faiss.xcodeproj -target faiss -configuration Release -sdk iphoneos -xcconfig $XCCONFIG

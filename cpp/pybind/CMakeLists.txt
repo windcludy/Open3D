@@ -75,28 +75,9 @@ set(PY_ALL_SOURCE_FILES
     pipelines/color_map/color_map.cpp
     pipelines/odometry/odometry.cpp
     pybind_utils.cpp
-    t/t.cpp
-    t/io/io.cpp
-    t/io/sensor.cpp
-    t/io/class_io.cpp
-    t/geometry/pointcloud.cpp
-    t/geometry/trianglemesh.cpp
-    t/geometry/geometry.cpp
-    t/geometry/image.cpp
-    t/geometry/tensormap.cpp
-    t/geometry/tsdf_voxelgrid.cpp
-    t/pipelines/pipelines.cpp
-    t/pipelines/slac/slac.cpp
-    t/pipelines/odometry/odometry.cpp
-    t/pipelines/registration/registration.cpp
     utility/console.cpp
     utility/eigen.cpp
     utility/utility.cpp
-    visualization/visualizer.cpp
-    visualization/visualization.cpp
-    visualization/renderoption.cpp
-    visualization/viewcontrol.cpp
-    visualization/utility.cpp
     )
 
 if (BUILD_GUI)

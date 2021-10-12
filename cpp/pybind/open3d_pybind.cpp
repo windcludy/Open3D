@@ -47,6 +47,8 @@ void init_static_property();
 }
 
 PYBIND11_MODULE(pybind, m) {
+    docstring::init_static_property();
+    
     utility::Logger::GetInstance().SetPrintFunction([](const std::string& msg) {
         py::gil_scoped_acquire acquire;
         py::print(msg);
@@ -67,7 +69,9 @@ PYBIND11_MODULE(pybind, m) {
     camera::pybind_camera(m);
     core::pybind_core(m);
     geometry::pybind_geometry(m);
+#if !TARGET_OS_IOS
     t::pybind_t(m);
+#endif
     ml::pybind_ml(m);
     io::pybind_io(m);
     pipelines::pybind_pipelines(m);
