@@ -48,29 +48,29 @@ xcodebuild -create-xcframework \
 xcodebuild -project build/libpng/src/ext_libpng-build/libpng.xcodeproj -target png_static -configuration Release -sdk iphoneos -xcconfig $XCCONFIG
 xcodebuild -project build/libpng/src/ext_libpng-build/libpng.xcodeproj -target png_static -configuration Release -sdk iphonesimulator -xcconfig $XCCONFIG
 
-rm -rf build/libpng/src/ext_libpng-build/libpng.a.xcframework
+rm -rf build/libpng/src/ext_libpng-build/png.xcframework
 
 xcodebuild -create-xcframework \
   -library build/libpng/src/ext_libpng-build/Release-iphoneos/libpng16.a \
   -library build/libpng/src/ext_libpng-build/Release-iphonesimulator/libpng16.a \
-  -output build/libpng/src/ext_libpng-build/libpng.a.xcframework
+  -output build/libpng/src/ext_libpng-build/png.xcframework
 
 
 # jsoncpp
 
 xcodebuild -project build/jsoncpp/src/ext_jsoncpp-build/jsoncpp.xcodeproj -target jsoncpp_static -configuration Release -sdk iphoneos -xcconfig $XCCONFIG
 
-rm -f build/jsoncpp/src/ext_jsoncpp-build/lib/Release/libjsoncpp-iOS.a
-mv build/jsoncpp/src/ext_jsoncpp-build/lib/Release/libjsoncpp.a build/jsoncpp/src/ext_jsoncpp-build/lib/Release/libjsoncpp-iOS.a
+rm -f build/jsoncpp/src/ext_jsoncpp-build/lib/libjsoncpp.a
+mv build/jsoncpp/src/ext_jsoncpp-build/lib/Release/libjsoncpp.a build/jsoncpp/src/ext_jsoncpp-build/lib
 
 xcodebuild -project build/jsoncpp/src/ext_jsoncpp-build/jsoncpp.xcodeproj -target jsoncpp_static -configuration Release -sdk iphonesimulator -xcconfig $XCCONFIG
 
-rm -rf build/jsoncpp/src/ext_jsoncpp-build/libOpen3D_3rdparty_jsoncpp.a.xcframework
+rm -rf build/jsoncpp/src/ext_jsoncpp-build/jsoncpp.xcframework
 
 xcodebuild -create-xcframework \
-  -library build/jsoncpp/src/ext_jsoncpp-build/lib/Release/libjsoncpp-iOS.a \
+  -library build/jsoncpp/src/ext_jsoncpp-build/lib/libjsoncpp.a \
   -library build/jsoncpp/src/ext_jsoncpp-build/lib/Release/libjsoncpp.a \
-  -output build/jsoncpp/src/ext_jsoncpp-build/libOpen3D_3rdparty_jsoncpp.a.xcframework
+  -output build/jsoncpp/src/ext_jsoncpp-build/jsoncpp.xcframework
 
 
 # Faiss
