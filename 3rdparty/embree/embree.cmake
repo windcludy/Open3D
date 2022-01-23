@@ -56,13 +56,18 @@ else()
 endif()
 
 
+find_package(Git QUIET REQUIRED)
+
 ExternalProject_Add(
     ext_embree
     PREFIX embree
     URL https://github.com/embree/embree/archive/refs/tags/v3.13.0.tar.gz
     URL_HASH SHA256=4d86a69508a7e2eb8710d571096ad024b5174834b84454a8020d3a910af46f4f
     DOWNLOAD_DIR "${OPEN3D_THIRD_PARTY_DOWNLOAD_DIR}/embree"
-    UPDATE_COMMAND sed -i bak "s/\\(check_arm_neon.cpp.\\)/\\1\\nset(COMPILER_SUPPORTS_ARM_NEON TRUE)/" CMakeLists.txt
+    UPDATE_COMMAND ""
+    PATCH_COMMAND ${GIT_EXECUTABLE} init
+    COMMAND ${GIT_EXECUTABLE} apply --ignore-space-change --ignore-whitespace
+        ${CMAKE_CURRENT_LIST_DIR}/0001-fix-for-iOS.patch
     CMAKE_ARGS
         -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
         -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
