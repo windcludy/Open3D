@@ -551,6 +551,7 @@ open3d_import_3rdparty_library(3rdparty_nanoflann
 )
 list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS Open3D::3rdparty_nanoflann)
 
+if(NOT IOS)
 # GLEW
 if(USE_SYSTEM_GLEW)
     open3d_find_package_3rdparty_library(3rdparty_glew
@@ -640,6 +641,7 @@ if(TARGET Open3D::3rdparty_x11)
     target_link_libraries(3rdparty_glfw INTERFACE Open3D::3rdparty_x11)
 endif()
 list(APPEND Open3D_3RDPARTY_HEADER_TARGETS Open3D::3rdparty_glfw)
+endif()
 
 # TurboJPEG
 if(USE_SYSTEM_JPEG AND BUILD_AZURE_KINECT)
@@ -792,6 +794,7 @@ open3d_build_3rdparty_library(3rdparty_rply DIRECTORY rply
 list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS Open3D::3rdparty_rply)
 
 # tinyfiledialogs
+if(NOT IOS)
 open3d_build_3rdparty_library(3rdparty_tinyfiledialogs DIRECTORY tinyfiledialogs
     SOURCES
         include/tinyfiledialogs/tinyfiledialogs.c
@@ -799,6 +802,7 @@ open3d_build_3rdparty_library(3rdparty_tinyfiledialogs DIRECTORY tinyfiledialogs
         include/
 )
 list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS Open3D::3rdparty_tinyfiledialogs)
+endif()
 
 # tinygltf
 if(USE_SYSTEM_TINYGLTF)
@@ -984,6 +988,7 @@ if (BUILD_BENCHMARKS)
 endif()
 
 # Headless rendering
+if (NOT IOS)
 if (ENABLE_HEADLESS_RENDERING)
     open3d_find_package_3rdparty_library(3rdparty_opengl
         REQUIRED
@@ -998,6 +1003,7 @@ else()
     )
 endif()
 list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS Open3D::3rdparty_opengl)
+endif()
 
 # imgui
 if(BUILD_GUI)
@@ -1212,7 +1218,7 @@ if(USE_BLAS)
             ${LAPACK_LIBRARIES}
             ${LAPACKE_LIBRARIES}
         )
-    else()
+    elseif(NOT IOS)
         # Install gfortran first for compiling OpenBLAS/Lapack from source.
         message(STATUS "Building OpenBLAS with LAPACK from source")
         set(BLAS_BUILD_FROM_SOURCE ON)

@@ -9,6 +9,7 @@ cmake_minimum_required(VERSION 3.19.2)
 # - use first-class language support for ISPC (3.19.2 patch release required)
 
 if (APPLE)
+cmake_policy(SET CMP0114 NEW)
 set (CMAKE_OSX_DEPLOYMENT_TARGET "10.14" CACHE STRING
     "Minimum OS X deployment version" FORCE)
 endif()
@@ -36,7 +37,7 @@ option(BUILD_PYTHON_MODULE        "Build the python module"                  ON 
 option(BUILD_CUDA_MODULE          "Build the CUDA module"                    OFF)
 option(BUILD_COMMON_CUDA_ARCHS    "Build for common CUDA GPUs (for release)" OFF)
 option(BUILD_CACHED_CUDA_MANAGER  "Build the cached CUDA memory manager"     ON )
-if(NOT LINUX_AARCH64)
+if(NOT LINUX_AARCH64 AND NOT IOS)
     option(BUILD_ISPC_MODULE      "Build the ISPC module"                    ON )
 else()
     option(BUILD_ISPC_MODULE      "Build the ISPC module"                    OFF)
@@ -237,16 +238,16 @@ endif()
 find_package(Python3 3.6...<3.10
              COMPONENTS Interpreter Development
 )
-if (Python3_FOUND)
+#if (Python3_FOUND)
     # Setup PYTHON_EXECUTABLE for 3rdparty modules
     # which still use the deprecated find_package(PythonInterp)
     set(PYTHON_EXECUTABLE ${Python3_EXECUTABLE} CACHE STRING
         "Deprecated path to the Python executable (for 3rdparty only)" FORCE)
-else()
-    if (BUILD_PYTHON_MODULE)
-        message(FATAL_ERROR "BUILD_PYTHON_MODULE=ON requires Python 3.6-3.9. Please ensure it is in PATH.")
-    endif()
-endif()
+#else()
+#    if (BUILD_PYTHON_MODULE)
+#        message(FATAL_ERROR "BUILD_PYTHON_MODULE=ON requires Python 3.6-3.9. Please ensure it is in PATH.")
+#    endif()
+#endif()
 
 # npm version has to be MAJOR.MINOR.PATCH
 string(CONCAT PROJECT_VERSION_THREE_NUMBER "${OPEN3D_VERSION_MAJOR}"
@@ -307,7 +308,9 @@ message(STATUS "Using security hardening linker flags: ${HARDENING_LDFLAGS}")
 message(STATUS "Using security hardening compiler definitions: ${HARDENING_DEFINITIONS}")
 
 add_compile_options("${HARDENING_CFLAGS}")
+if(NOT IOS)
 add_link_options("${HARDENING_LDFLAGS}")
+endif()
 add_compile_definitions("${HARDENING_DEFINITIONS}")
 
 # Explicitly specifiy the preference of using -pthread over -lpthread.

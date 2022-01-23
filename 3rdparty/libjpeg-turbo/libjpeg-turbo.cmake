@@ -49,6 +49,8 @@ else()
     set(lib_name "turbojpeg")
 endif()
 
+find_package(Git QUIET REQUIRED)
+
 ExternalProject_Add(
     ext_turbojpeg
     PREFIX turbojpeg
@@ -56,6 +58,9 @@ ExternalProject_Add(
     URL_HASH SHA256=005aee2fcdca252cee42271f7f90574dda64ca6505d9f8b86ae61abc2b426371
     DOWNLOAD_DIR "${OPEN3D_THIRD_PARTY_DOWNLOAD_DIR}/libjpeg-turbo"
     UPDATE_COMMAND ""
+    PATCH_COMMAND ${GIT_EXECUTABLE} init
+    COMMAND ${GIT_EXECUTABLE} apply --ignore-space-change --ignore-whitespace
+        ${CMAKE_CURRENT_LIST_DIR}/0001-fix-for-iOS.patch
     CMAKE_ARGS
         -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
         -DWITH_CRT_DLL=${WITH_CRT_DLL}
@@ -63,6 +68,8 @@ ExternalProject_Add(
         -DENABLE_SHARED=OFF
         -DWITH_SIMD=${WITH_SIMD}
         ${ExternalProject_CMAKE_ARGS_hidden}
+        -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
+        -DCMAKE_SYSTEM_PROCESSOR=aarch64
     BUILD_BYPRODUCTS
         <INSTALL_DIR>/${Open3D_INSTALL_LIB_DIR}/${CMAKE_STATIC_LIBRARY_PREFIX}${lib_name}${CMAKE_STATIC_LIBRARY_SUFFIX}
 )
