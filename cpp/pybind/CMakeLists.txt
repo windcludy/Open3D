@@ -6,7 +6,7 @@ endif()
 set(PYTHON_VERSION "${Python3_VERSION_MAJOR}.${Python3_VERSION_MINOR}")
 
 
-pybind11_add_module(pybind STATIC)
+pybind11_add_module(pybind)
 
 add_subdirectory(camera)
 add_subdirectory(core)
