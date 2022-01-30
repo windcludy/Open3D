@@ -1139,6 +1139,7 @@ if(BUILD_GUI)
     list(APPEND Open3D_3RDPARTY_HEADER_TARGETS Open3D::3rdparty_filament)
 endif()
 
+if (NOT IOS)
 # RPC interface
 # zeromq
 include(${Open3D_3RDPARTY_DIR}/zeromq/zeromq_build.cmake)
@@ -1161,6 +1162,7 @@ open3d_import_3rdparty_library(3rdparty_msgpack
     DEPENDS      ext_msgpack-c
 )
 list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS Open3D::3rdparty_msgpack)
+endif()
 
 # TBB
 include(${Open3D_3RDPARTY_DIR}/mkl/tbb.cmake)
