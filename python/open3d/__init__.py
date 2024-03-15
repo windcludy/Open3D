@@ -49,6 +49,13 @@ if _build_config["BUILD_GUI"] and not (_find_library('c++abi') or
     except StopIteration:  # Not found: check system paths while loading
         pass
 
+# Enable CPU rendering based on env vars
+if _build_config["BUILD_GUI"] and sys.platform.startswith('linux') and (
+        os.getenv('OPEN3D_CPU_RENDERING', default='') == 'true'):
+    os.environ['LIBGL_DRIVERS_PATH'] = str(_Path(__file__).parent)
+    _CDLL(_Path(__file__).parent / 'libEGL.so.1')
+    _CDLL(_Path(__file__).parent / 'libGL.so.1')
+
 __DEVICE_API__ = 'cpu'
 if _build_config["BUILD_CUDA_MODULE"]:
     # Load CPU pybind dll gracefully without introducing new python variable.
@@ -66,8 +73,8 @@ if _build_config["BUILD_CUDA_MODULE"]:
         _pybind_cuda = _CDLL(
             str(next((_Path(__file__).parent / 'cuda').glob('pybind*'))))
         if _pybind_cuda.open3d_core_cuda_device_count() > 0:
-            from open3d.cuda.pybind import (camera, geometry, io, pipelines,
-                                            utility, t)
+            from open3d.cuda.pybind import (camera, data, geometry, io,
+                                            pipelines, utility, t)
             from open3d.cuda import pybind
             __DEVICE_API__ = 'cuda'
         else:
@@ -87,7 +94,8 @@ if _build_config["BUILD_CUDA_MODULE"]:
             "binding library.", ImportWarning)
 
 if __DEVICE_API__ == 'cpu':
-    from open3d.cpu.pybind import (camera, geometry, io, pipelines, utility, t)
+    from open3d.cpu.pybind import (camera, data, geometry, io, pipelines,
+                                   utility, t)
     from open3d.cpu import pybind
 
 import open3d.core

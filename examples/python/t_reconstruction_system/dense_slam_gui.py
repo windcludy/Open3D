@@ -29,18 +29,18 @@
 # P.S. This example is used in documentation, so, please ensure the changes are
 # synchronized.
 
+import open3d as o3d
+import open3d.core as o3c
 import open3d.visualization.gui as gui
 import open3d.visualization.rendering as rendering
 
-import open3d as o3d
-import open3d.core as o3c
 from config import ConfigParser
 
 import os, sys
 import numpy as np
 import threading
 import time
-from common import load_rgbd_file_names, save_poses, load_intrinsic, extract_trianglemesh, get_default_testdata
+from common import load_rgbd_file_names, save_poses, load_intrinsic, extract_trianglemesh, get_default_dataset, extract_rgbd_frames
 
 
 def set_enabled(widget, enable):
@@ -86,6 +86,13 @@ class ReconstructionWindow:
         self.fixed_prop_grid.add_child(voxel_size_label)
         self.fixed_prop_grid.add_child(self.voxel_size_slider)
 
+        trunc_multiplier_label = gui.Label('Trunc multiplier')
+        self.trunc_multiplier_slider = gui.Slider(gui.Slider.DOUBLE)
+        self.trunc_multiplier_slider.set_limits(1.0, 20.0)
+        self.trunc_multiplier_slider.double_value = config.trunc_voxel_multiplier
+        self.fixed_prop_grid.add_child(trunc_multiplier_label)
+        self.fixed_prop_grid.add_child(self.trunc_multiplier_slider)
+
         est_block_count_label = gui.Label('Est. blocks')
         self.est_block_count_slider = gui.Slider(gui.Slider.INT)
         self.est_block_count_slider.set_limits(40000, 100000)
@@ -95,7 +102,8 @@ class ReconstructionWindow:
 
         est_point_count_label = gui.Label('Est. points')
         self.est_point_count_slider = gui.Slider(gui.Slider.INT)
-        self.est_point_count_slider.set_limits(3000000, 10000000)
+        self.est_point_count_slider.set_limits(500000, 8000000)
+        self.est_point_count_slider.int_value = config.est_point_count
         self.fixed_prop_grid.add_child(est_point_count_label)
         self.fixed_prop_grid.add_child(self.est_point_count_slider)
 
@@ -247,7 +255,7 @@ class ReconstructionWindow:
 
         pcd_placeholder = o3d.t.geometry.PointCloud(
             o3c.Tensor(np.zeros((max_points, 3), dtype=np.float32)))
-        pcd_placeholder.point['colors'] = o3c.Tensor(
+        pcd_placeholder.point.colors = o3c.Tensor(
             np.zeros((max_points, 3), dtype=np.float32))
         mat = rendering.MaterialRecord()
         mat.shader = 'defaultUnlit'
@@ -264,6 +272,8 @@ class ReconstructionWindow:
         set_enabled(self.adjustable_prop_grid, True)
 
     def _on_close(self):
+        self.is_done = True
+
         if self.is_started:
             print('Saving model to {}...'.format(config.path_npz))
             self.model.voxel_grid.save(config.path_npz)
@@ -316,7 +326,7 @@ class ReconstructionWindow:
             (raycast_color).to(o3c.uint8, False, 255.0).to_legacy())
 
         if self.is_scene_updated:
-            if pcd is not None and pcd.point['positions'].shape[0] > 0:
+            if pcd is not None and pcd.point.positions.shape[0] > 0:
                 self.widget3d.scene.scene.update_geometry(
                     'points', pcd, rendering.Scene.UPDATE_POINTS_FLAG |
                     rendering.Scene.UPDATE_COLORS_FLAG)
@@ -383,18 +393,21 @@ class ReconstructionWindow:
             self.model.update_frame_pose(self.idx, T_frame_to_model)
             self.model.integrate(input_frame,
                                  float(self.scale_slider.int_value),
-                                 self.max_slider.double_value)
+                                 self.max_slider.double_value,
+                                 self.trunc_multiplier_slider.double_value)
             self.model.synthesize_model_frame(
                 raycast_frame, float(self.scale_slider.int_value),
                 config.depth_min, self.max_slider.double_value,
+                self.trunc_multiplier_slider.double_value,
                 self.raycast_box.checked)
 
             if (self.idx % self.interval_slider.int_value == 0 and
                     self.update_box.checked) \
                     or (self.idx == 3) \
                     or (self.idx == n_files - 1):
-                pcd = self.model.voxel_grid.extract_point_cloud().to(
-                    o3d.core.Device('CPU:0'))
+                pcd = self.model.voxel_grid.extract_point_cloud(
+                    3.0, self.est_point_count_slider.int_value).to(
+                        o3d.core.Device('CPU:0'))
                 self.is_scene_updated = True
             else:
                 self.is_scene_updated = False
@@ -423,7 +436,7 @@ class ReconstructionWindow:
                 self.model.voxel_grid.hashmap().size(),
                 self.model.voxel_grid.hashmap().capacity())
             info += 'Surface points: {}/{}\n'.format(
-                0 if pcd is None else pcd.point['positions'].shape[0],
+                0 if pcd is None else pcd.point.positions.shape[0],
                 self.est_point_count_slider.int_value)
 
             self.output_info.text = info
@@ -449,13 +462,26 @@ if __name__ == '__main__':
         help='YAML config file path. Please refer to default_config.yml as a '
         'reference. It overrides the default config file, but will be '
         'overridden by other command line inputs.')
+    parser.add('--default_dataset',
+               help='Default dataset is used when config file is not provided. '
+               'Default dataset may be selected from the following options: '
+               '[lounge, bedroom, jack_jack]',
+               default='lounge')
     parser.add('--path_npz',
                help='path to the npz file that stores voxel block grid.',
                default='output.npz')
     config = parser.get_config()
 
     if config.path_dataset == '':
-        config.path_dataset = get_default_testdata()
+        config = get_default_dataset(config)
+
+    # Extract RGB-D frames and intrinsic from bag file.
+    if config.path_dataset.endswith(".bag"):
+        assert os.path.isfile(
+            config.path_dataset), (f"File {config.path_dataset} not found.")
+        print("Extracting frames from RGBD video file")
+        config.path_dataset, config.path_intrinsic, config.depth_scale = extract_rgbd_frames(
+            config.path_dataset)
 
     app = gui.Application.instance
     app.initialize()

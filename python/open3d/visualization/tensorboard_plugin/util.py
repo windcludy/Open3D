@@ -38,8 +38,10 @@ from tensorboard.compat.tensorflow_stub.pywrap_tensorflow import masked_crc32c
 
 import open3d as o3d
 from open3d.visualization import rendering
-from open3d.ml.vis import Colormap
-from open3d.ml.vis import LabelLUT
+# TODO(@ssheorey) Colormap and LabelLUT are duplicated from Open3D-ML. Remove
+# duplicates when 3DML is available on Windows.
+from .colormap import Colormap
+from .labellut import LabelLUT
 from . import plugin_data_pb2
 from . import metadata
 
@@ -63,7 +65,7 @@ class ReadWriteLock:
     """A lock object that allows many simultaneous "read locks", but
     only one "write lock."
 
-    Implmentation from Python Cookbook (O'Reilly)
+    Implementation from Python Cookbook (O'Reilly)
     https://www.oreilly.com/library/view/python-cookbook/0596001673/ch06s04.html
     Credit: Sami Hangaslammi
     """
@@ -181,8 +183,8 @@ def _classify_properties(tensormap):
     """
     label_prop = {}
     custom_prop = {}
-    exp_size = (tensormap['positions'].shape[0]
-                if 'positions' in tensormap else tensormap['indices'].shape[0])
+    exp_size = (tensormap.positions.shape[0]
+                if 'positions' in tensormap else tensormap.indices.shape[0])
     for name, tensor in tensormap.items():
         if name in ('positions', 'colors', 'normals',
                     'indices') or name.startswith('_'):
@@ -366,7 +368,7 @@ class Open3DPluginDataReader:
             if prop_map == "vertex" and not isinstance(
                     geometry, o3d.t.geometry.TriangleMesh):
                 prop_map = "point"
-            # geometry.vertex["normals"] = geometry_ref.vertex["normals"]
+            # geometry.vertex.normals = geometry_ref.vertex.normals
             getattr(geometry, prop_map)[prop_attribute] = getattr(
                 geometry_ref, prop_map)[prop_attribute]
 
@@ -664,7 +666,7 @@ class RenderUpdate:
                   self._shader == "defaultUnlit" and
                   geometry_vertex[self._property].shape[1] >= 3):
                 swap.backup(geometry_vertex, "colors")
-                geometry_vertex["colors"], min_val, max_val = _normalize(
+                geometry_vertex.colors, min_val, max_val = _normalize(
                     geometry_vertex[self._property][:, :3])
                 self._update_range(min_val, max_val)
                 geometry_update_flag |= rendering.Scene.UPDATE_COLORS_FLAG
@@ -674,9 +676,9 @@ class RenderUpdate:
             if self._property == "" and self._shader == "unlitSolidColor":
                 swap.backup(geometry.line,
                             "colors",
-                            shape=(len(geometry.line["indices"]), 3),
+                            shape=(len(geometry.line.indices), 3),
                             dtype=o3d.core.uint8)
-                geometry.line["colors"][:] = next(iter(
+                geometry.line.colors[:] = next(iter(
                     self._colormap.values()))[:3]
             elif self._property != "" and self._shader == "unlitGradient.LUT":
                 if self._colormap is None:
@@ -685,10 +687,10 @@ class RenderUpdate:
                     swap.backup(geometry.line, "indices", clone=True)
                     swap.backup(geometry.line,
                                 "colors",
-                                shape=(len(geometry.line["indices"]), 3),
+                                shape=(len(geometry.line.indices), 3),
                                 dtype=o3d.core.uint8)
-                    t_lines = geometry.line["indices"]
-                    t_colors = geometry.line["colors"]
+                    t_lines = geometry.line.indices
+                    t_colors = geometry.line.colors
                     idx = 0
                     for bbir in inference_result:
                         col = self._colormap.setdefault(bbir.label,

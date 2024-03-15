@@ -4,9 +4,9 @@ target_sources(pybind PRIVATE
     image.cpp
     lineset.cpp
     pointcloud.cpp
+    boundingvolume.cpp
     raycasting_scene.cpp
     tensormap.cpp
     trianglemesh.cpp
-    tsdf_voxelgrid.cpp
     voxel_block_grid.cpp
 )

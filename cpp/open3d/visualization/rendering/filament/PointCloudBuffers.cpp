@@ -239,6 +239,7 @@ GeometryBuffersBuilder::Buffers PointCloudBuffersBuilder::ConstructBuffers() {
                                            normals.data()))
                                    .build();
         orientation->getQuats(float4v_tagents, n_vertices);
+        delete orientation;
     }
 
     const size_t vertices_byte_count = n_vertices * sizeof(ColoredVertex);
@@ -309,7 +310,7 @@ TPointCloudBuffersBuilder::TPointCloudBuffersBuilder(
     : geometry_(geometry) {
     // Make sure geometry is on CPU
     auto pts = geometry.GetPointPositions();
-    if (pts.GetDevice().GetType() == core::Device::DeviceType::CUDA) {
+    if (pts.IsCUDA()) {
         utility::LogWarning(
                 "GPU resident point clouds are not currently supported for "
                 "visualization. Copying data to CPU.");
@@ -433,6 +434,7 @@ GeometryBuffersBuilder::Buffers TPointCloudBuffersBuilder::ConstructBuffers() {
                 float4v_tangents, normal_array_size,
                 GeometryBuffersBuilder::DeallocateBuffer);
         vbuf->setBufferAt(engine, 2, std::move(normals_descriptor));
+        delete orientation;
     } else {
         float* normal_array = static_cast<float*>(malloc(normal_array_size));
         float* normal_ptr = normal_array;

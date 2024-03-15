@@ -50,14 +50,13 @@ class PyOffscreenRenderer {
 public:
     PyOffscreenRenderer(int width,
                         int height,
-                        const std::string &resource_path,
-                        bool headless) {
-        gui::InitializeForPython(resource_path);
+                        const std::string &resource_path) {
+        gui::InitializeForPython(resource_path, true);
         width_ = width;
         height_ = height;
-        if (headless) {
-            EngineInstance::EnableHeadless();
-        }
+        // NOTE: OffscreenRenderer now always uses headless so that a window
+        // system is never required
+        EngineInstance::EnableHeadless();
         renderer_ = new FilamentRenderer(EngineInstance::GetInstance(), width,
                                          height,
                                          EngineInstance::GetResourceManager());
@@ -67,6 +66,8 @@ public:
     ~PyOffscreenRenderer() {
         delete scene_;
         delete renderer_;
+        // Destroy Filament Engine here so OffscreenRenderer can be reused
+        EngineInstance::DestroyInstance();
     }
 
     Open3DScene *GetScene() { return scene_; }
@@ -148,7 +149,7 @@ void pybind_rendering_classes(py::module &m) {
                  "returns False and does nothing if the image is a different "
                  "size. It is more efficient to call update_texture() rather "
                  "than removing and adding a new texture, especially when "
-                 "changes happen frequently, such as when implmenting video. "
+                 "changes happen frequently, such as when implementing video. "
                  "add_texture(geometry.Image, bool). The first parameter is "
                  "the image, the second parameter is optional and is True "
                  "if the image is in the sRGB colorspace and False otherwise")
@@ -165,19 +166,15 @@ void pybind_rendering_classes(py::module &m) {
                       "Renderer instance that can be used for rendering to an "
                       "image");
     offscreen
-            .def(py::init([](int w, int h, const std::string &resource_path,
-                             bool headless) {
+            .def(py::init([](int w, int h, const std::string &resource_path) {
                      return std::make_shared<PyOffscreenRenderer>(
-                             w, h, resource_path, headless);
+                             w, h, resource_path);
                  }),
                  "width"_a, "height"_a, "resource_path"_a = "",
-                 "headless"_a = false,
-                 "Takes width, height and optionally a resource_path and "
-                 "headless flag. If "
-                 "unspecified, resource_path will use the resource path from "
-                 "the installed Open3D library. By default a running windowing "
-                 "session is required. To enable headless rendering set "
-                 "headless to True")
+                 "Takes width, height and optionally a resource_path. "
+                 " If unspecified, resource_path will use the resource path "
+                 "from "
+                 "the installed Open3D library.")
             .def_property_readonly(
                     "scene", &PyOffscreenRenderer::GetScene,
                     "Returns the Open3DScene for this renderer. This scene is "
@@ -357,6 +354,7 @@ void pybind_rendering_classes(py::module &m) {
             .def_readwrite("base_clearcoat_roughness",
                            &MaterialRecord::base_clearcoat_roughness)
             .def_readwrite("base_anisotropy", &MaterialRecord::base_anisotropy)
+            .def_readwrite("emissive_color", &MaterialRecord::emissive_color)
             .def_readwrite("thickness", &MaterialRecord::thickness)
             .def_readwrite("transmission", &MaterialRecord::transmission)
             .def_readwrite("absorption_color",
@@ -460,8 +458,42 @@ void pybind_rendering_classes(py::module &m) {
     // ---- View ----
     py::class_<View, UnownedPointer<View>> view(m, "View",
                                                 "Low-level view class");
+    // ---- Shadow Types ----
+    py::enum_<View::ShadowType> shadow_type(
+            view, "ShadowType", "Available shadow mapping algorithm options");
+    shadow_type.value("PCF", View::ShadowType::kPCF)
+            .value("VSM", View::ShadowType::kVSM);
+
     view.def("set_color_grading", &View::SetColorGrading,
-             "Sets the parameters to be used for the color grading algorithms");
+             "Sets the parameters to be used for the color grading algorithms")
+            .def("set_post_processing", &View::SetPostProcessing,
+                 "True to enable, False to disable post processing. Post "
+                 "processing effects include: color grading, ambient occlusion "
+                 "(and other screen space effects), and anti-aliasing.")
+            .def("set_ambient_occlusion", &View::SetAmbientOcclusion,
+                 "enabled"_a, "ssct_enabled"_a = false,
+                 "True to enable, False to disable ambient occlusion. "
+                 "Optionally, screen-space cone tracing may be enabled with "
+                 "ssct_enabled=True.")
+            .def("set_antialiasing", &View::SetAntiAliasing, "enabled"_a,
+                 "temporal"_a = false,
+                 "True to enable, False to disable anti-aliasing. Note that "
+                 "this only impacts anti-aliasing post-processing. MSAA is "
+                 "controlled separately by `set_sample_count`. Temporal "
+                 "anti-aliasing may be optionally enabled with temporal=True.")
+            .def("set_sample_count", &View::SetSampleCount,
+                 "Sets the sample count for MSAA. Set to 1 to disable MSAA. "
+                 "Typical values are 2, 4 or 8. The maximum possible value "
+                 "depends on the underlying GPU and OpenGL driver.")
+            .def("set_shadowing", &View::SetShadowing, "enabled"_a,
+                 "type"_a = View::ShadowType::kPCF,
+                 "True to enable, false to enable all shadow mapping when "
+                 "rendering this View. When enabling shadow mapping you may "
+                 "also specify one of two shadow mapping algorithms: PCF "
+                 "(default) or VSM. Note: shadowing is enabled by default with "
+                 "PCF shadow mapping.")
+            .def("get_camera", &View::GetCamera,
+                 "Returns the Camera associated with this View.");
 
     // ---- Scene ----
     py::class_<Scene, UnownedPointer<Scene>> scene(m, "Scene",
@@ -619,6 +651,15 @@ void pybind_rendering_classes(py::module &m) {
                  "added to the scene, False otherwise")
             .def("remove_geometry", &Open3DScene::RemoveGeometry,
                  "Removes the geometry with the given name")
+            .def("geometry_is_visible", &Open3DScene::GeometryIsVisible,
+                 "geometry_is_visible(name): returns True if the geometry name "
+                 "is visible")
+            .def("set_geometry_transform", &Open3DScene::SetGeometryTransform,
+                 "set_geometry_transform(name, transform): sets the pose of the"
+                 " geometry name to transform")
+            .def("get_geometry_transform", &Open3DScene::GetGeometryTransform,
+                 "get_geometry_transform(name): returns the pose of the "
+                 "geometry name in the scene")
             .def("modify_geometry_material",
                  &Open3DScene::ModifyGeometryMaterial,
                  "modify_geometry_material(name, material). Modifies the "

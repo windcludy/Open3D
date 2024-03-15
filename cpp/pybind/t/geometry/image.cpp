@@ -101,12 +101,39 @@ void pybind_image(py::module &m) {
                  "tensor"_a);
     docstring::ClassMethodDocInject(m, "Image", "__init__",
                                     map_shared_argument_docstrings);
+
+    // Pickle support.
+    image.def(py::pickle(
+            [](const Image &image) {
+                // __getstate__
+                return py::make_tuple(image.AsTensor());
+            },
+            [](py::tuple t) {
+                // __setstate__
+                if (t.size() != 1) {
+                    utility::LogError(
+                            "Cannot unpickle Image! Expecting a tuple of size "
+                            "1.");
+                }
+                return Image(t[0].cast<core::Tensor>());
+            }));
+
     // Buffer protocol.
     image.def_buffer([](Image &I) -> py::buffer_info {
-        return py::buffer_info(I.GetDataPtr(), I.GetDtype().ByteSize(),
+        if (!I.IsCPU()) {
+            utility::LogError(
+                    "Cannot convert image buffer since it's not on CPU. "
+                    "Convert to CPU image by calling .cpu() first.");
+        }
+        core::SizeVector strides_in_bytes = I.AsTensor().GetStrides();
+        const int64_t element_byte_size = I.GetDtype().ByteSize();
+        for (size_t i = 0; i < strides_in_bytes.size(); i++) {
+            strides_in_bytes[i] *= element_byte_size;
+        }
+        return py::buffer_info(I.GetDataPtr(), element_byte_size,
                                pybind_utils::DtypeToArrayFormat(I.GetDtype()),
                                I.AsTensor().NumDims(), I.AsTensor().GetShape(),
-                               I.AsTensor().GetStrides());
+                               strides_in_bytes);
     });
     // Info.
     image.def_property_readonly("dtype", &Image::GetDtype,
@@ -263,7 +290,7 @@ void pybind_image(py::module &m) {
             rgbd_image(
                     m, "RGBDImage",
                     "RGBDImage is a pair of color and depth images. For most "
-                    "procesing, the image pair should be aligned (same "
+                    "processing, the image pair should be aligned (same "
                     "viewpoint and  "
                     "resolution).");
     rgbd_image
@@ -272,6 +299,26 @@ void pybind_image(py::module &m) {
             .def(py::init<const Image &, const Image &, bool>(),
                  "Parameterized constructor", "color"_a, "depth"_a,
                  "aligned"_a = true)
+
+            // Pickling support.
+            .def(py::pickle(
+                    [](const RGBDImage &rgbd) {
+                        // __getstate__
+                        return py::make_tuple(rgbd.color_, rgbd.depth_,
+                                              rgbd.aligned_);
+                    },
+                    [](py::tuple t) {
+                        // __setstate__
+                        if (t.size() != 3) {
+                            utility::LogError(
+                                    "Cannot unpickle RGBDImage! Expecting a "
+                                    "tuple of size 3.");
+                        }
+
+                        return RGBDImage(t[0].cast<Image>(), t[1].cast<Image>(),
+                                         t[2].cast<bool>());
+                    }))
+
             // Depth and color images.
             .def_readwrite("color", &RGBDImage::color_, "The color image.")
             .def_readwrite("depth", &RGBDImage::depth_, "The depth image.")

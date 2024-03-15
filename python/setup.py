@@ -84,12 +84,12 @@ try:
         # https://github.com/Yelp/dumb-init/blob/57f7eebef694d780c1013acd410f2f0d3c79f6c6/setup.py#L25
         def get_tag(self):
             python, abi, plat = _bdist_wheel.get_tag(self)
-            if plat == 'linux_x86_64':
+            if plat[:5] == 'linux':
                 libc = ctypes.CDLL('libc.so.6')
                 libc.gnu_get_libc_version.restype = ctypes.c_char_p
                 GLIBC_VER = libc.gnu_get_libc_version().decode('utf8').split(
                     '.')
-                plat = f'manylinux_{GLIBC_VER[0]}_{GLIBC_VER[1]}_x86_64'
+                plat = f'manylinux_{GLIBC_VER[0]}_{GLIBC_VER[1]}{plat[5:]}'
             return python, abi, plat
 
     cmdclass['bdist_wheel'] = bdist_wheel
@@ -123,7 +123,9 @@ if '@BUNDLE_OPEN3D_ML@' == 'ON':
     with open('@OPEN3D_ML_ROOT@/requirements.txt', 'r') as f:
         install_requires += [line.strip() for line in f.readlines() if line]
 
-entry_points = {}
+entry_points = {
+    'console_scripts': ['open3d = @PYPI_PACKAGE_NAME@.tools.cli:main',]
+}
 if sys.platform != 'darwin':  # Remove check when off main thread GUI works
     entry_points.update({
         "tensorboard_plugins": [
@@ -143,7 +145,7 @@ setup_args = dict(
     cmdclass=cmdclass,
     author='Open3D Team',
     author_email='@PROJECT_EMAIL@',
-    url="@PROJECT_HOME@",
+    url="@PROJECT_HOMEPAGE_URL@",
     project_urls={
         'Documentation': '@PROJECT_DOCS@',
         'Source code': '@PROJECT_CODE@',
@@ -165,15 +167,15 @@ setup_args = dict(
         "License :: OSI Approved :: MIT License",
         "Natural Language :: English",
         "Operating System :: POSIX :: Linux",
-        "Operating System :: MacOS :: MacOSX",
+        "Operating System :: MacOS :: MacOS X",
         "Operating System :: Microsoft :: Windows",
         "Programming Language :: C",
         "Programming Language :: C++",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
         "Topic :: Education",
         "Topic :: Multimedia :: Graphics :: 3D Modeling",
         "Topic :: Multimedia :: Graphics :: 3D Rendering",
@@ -186,7 +188,7 @@ setup_args = dict(
         "Topic :: Software Development :: Libraries :: Python Modules",
         "Topic :: Utilities",
     ],
-    description='Open3D: A Modern Library for 3D Data Processing.',
+    description='@PROJECT_DESCRIPTION@',
     long_description=open('README.rst').read(),
     long_description_content_type='text/x-rst',
 )

@@ -497,6 +497,7 @@ GeometryBuffersBuilder::Buffers TriangleMeshBuffersBuilder::ConstructBuffers() {
                                            normals.data()))
                                    .build();
         orientation->getQuats(float4v_tangents, n_vertices);
+        delete orientation;
     }
 
     // NOTE: Both default lit and unlit material shaders require per-vertex
@@ -585,7 +586,7 @@ TMeshBuffersBuilder::TMeshBuffersBuilder(
     : geometry_(geometry) {
     // Make sure geometry is on GPU
     auto pts = geometry.GetVertexPositions();
-    if (pts.GetDevice().GetType() == core::Device::DeviceType::CUDA) {
+    if (pts.IsCUDA()) {
         utility::LogWarning(
                 "GPU resident triangle meshes are not currently supported for "
                 "visualization. Copying data to CPU.");
@@ -730,6 +731,7 @@ GeometryBuffersBuilder::Buffers TMeshBuffersBuilder::ConstructBuffers() {
                             .build();
             orientation->getQuats(reinterpret_cast<math::quatf*>(normal_array),
                                   n_vertices);
+            delete orientation;
         } else {
             const auto& normals = geometry_.GetVertexNormals();
             // Converting normals to Filament type - quaternions
@@ -741,6 +743,7 @@ GeometryBuffersBuilder::Buffers TMeshBuffersBuilder::ConstructBuffers() {
                             .build();
             orientation->getQuats(reinterpret_cast<math::quatf*>(normal_array),
                                   n_vertices);
+            delete orientation;
         }
     } else if (geometry_.HasTriangleNormals()) {
         const auto& normals = geometry_.GetTriangleNormals();
@@ -757,6 +760,7 @@ GeometryBuffersBuilder::Buffers TMeshBuffersBuilder::ConstructBuffers() {
                         .build();
         orientation->getQuats(reinterpret_cast<math::quatf*>(normal_array),
                               n_vertices);
+        delete orientation;
     } else {
         float* normal_ptr = normal_array;
         for (size_t i = 0; i < n_vertices; ++i) {
