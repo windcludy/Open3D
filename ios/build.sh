@@ -75,10 +75,10 @@ xcodebuild -create-xcframework \
 
 # Faiss
 
-xcodebuild -project build/faiss/src/ext_faiss-build/faiss.xcodeproj -target faiss -configuration Release -sdk iphoneos -xcconfig $XCCONFIG
-xcodebuild -project build/faiss/src/ext_faiss-build/faiss.xcodeproj -target faiss -configuration Release -sdk iphonesimulator -xcconfig $XCCONFIG
+# xcodebuild -project build/faiss/src/ext_faiss-build/faiss.xcodeproj -target faiss -configuration Release -sdk iphoneos -xcconfig $XCCONFIG
+# xcodebuild -project build/faiss/src/ext_faiss-build/faiss.xcodeproj -target faiss -configuration Release -sdk iphonesimulator -xcconfig $XCCONFIG
 
-rm -rf build/faiss/src/ext_faiss-build/Faiss.xcframework
+# rm -rf build/faiss/src/ext_faiss-build/Faiss.xcframework
 
 xcodebuild -create-xcframework \
   -library build/faiss/src/ext_faiss-build/faiss/Release-iphoneos/libfaiss.a \
@@ -102,7 +102,15 @@ xcodebuild -create-xcframework \
 # Assimp
 
 xcodebuild -project build/assimp/src/ext_assimp-build/Assimp.xcodeproj -target assimp -configuration Release -sdk iphoneos -xcconfig $XCCONFIG
+rm -f build/assimp/src/ext_assimp-build/code/Release-iphoneos/libassimp.a
+mkdir -p build/assimp/src/ext_assimp-build/code/Release-iphoneos/
+mv build/assimp/src/ext_assimp-build/lib/Release/libassimp.a build/assimp/src/ext_assimp-build/code/Release-iphoneos/
+
 xcodebuild -project build/assimp/src/ext_assimp-build/Assimp.xcodeproj -target assimp -configuration Release -sdk iphonesimulator -xcconfig $XCCONFIG
+rm -f build/assimp/src/ext_assimp-build/code/Release-iphonesimulator/libassimp.a
+mkdir -p build/assimp/src/ext_assimp-build/code/Release-iphonesimulator/
+mv build/assimp/src/ext_assimp-build/lib/Release/libassimp.a build/assimp/src/ext_assimp-build/code/Release-iphonesimulator/
+
 
 rm -rf build/assimp/lib/Assimp.xcframework
 
@@ -111,9 +119,9 @@ xcodebuild -create-xcframework \
   -library build/assimp/src/ext_assimp-build/code/Release-iphonesimulator/libassimp.a \
   -output build/assimp/lib/Assimp.xcframework
 
-rm -rf build/assimp/lib/IrrXML.xcframework
+# rm -rf build/assimp/lib/IrrXML.xcframework
 
-xcodebuild -create-xcframework \
-  -library build/assimp/src/ext_assimp-build/contrib/irrXML/Release-iphoneos/libIrrXML.a \
-  -library build/assimp/src/ext_assimp-build/contrib/irrXML/Release-iphonesimulator/libIrrXML.a \
-  -output build/assimp/lib/IrrXML.xcframework
+# xcodebuild -create-xcframework \
+#   -library build/assimp/src/ext_assimp-build/contrib/irrXML/Release-iphoneos/libIrrXML.a \
+#   -library build/assimp/src/ext_assimp-build/contrib/irrXML/Release-iphonesimulator/libIrrXML.a \
+#   -output build/assimp/lib/IrrXML.xcframework

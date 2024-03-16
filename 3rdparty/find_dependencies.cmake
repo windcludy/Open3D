@@ -1364,6 +1364,7 @@ if(BUILD_GUI)
 endif()
 
 # Headless rendering
+if (NOT IOS)
 if (ENABLE_HEADLESS_RENDERING)
     open3d_find_package_3rdparty_library(3rdparty_opengl
         REQUIRED
@@ -1379,7 +1380,7 @@ else()
     set(USE_SYSTEM_OPENGL ON)
 endif()
 list(APPEND Open3D_3RDPARTY_HEADER_TARGETS_FROM_SYSTEM Open3D::3rdparty_opengl)
-
+endif()
 # CPU Rendering
 if(BUILD_GUI AND UNIX AND NOT APPLE)
     include(FetchContent)
