@@ -617,6 +617,7 @@ else()
     list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS_FROM_SYSTEM Open3D::3rdparty_nanoflann)
 endif()
 
+if(NOT IOS)
 # GLEW
 if(USE_SYSTEM_GLEW)
     open3d_find_package_3rdparty_library(3rdparty_glew
@@ -714,6 +715,8 @@ else()
 endif()
 if(TARGET Open3D::3rdparty_x11)
     target_link_libraries(3rdparty_glfw INTERFACE Open3D::3rdparty_x11)
+endif()
+list(APPEND Open3D_3RDPARTY_HEADER_TARGETS Open3D::3rdparty_glfw)
 endif()
 
 # TurboJPEG
@@ -947,6 +950,7 @@ open3d_build_3rdparty_library(3rdparty_rply DIRECTORY rply
 list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS_FROM_CUSTOM Open3D::3rdparty_rply)
 
 # tinyfiledialogs
+if(NOT IOS)
 open3d_build_3rdparty_library(3rdparty_tinyfiledialogs DIRECTORY tinyfiledialogs
     SOURCES
         include/tinyfiledialogs/tinyfiledialogs.c
@@ -954,6 +958,7 @@ open3d_build_3rdparty_library(3rdparty_tinyfiledialogs DIRECTORY tinyfiledialogs
         include/
 )
 list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS_FROM_CUSTOM Open3D::3rdparty_tinyfiledialogs)
+endif()
 
 # tinygltf
 if(USE_SYSTEM_TINYGLTF)
@@ -1168,6 +1173,24 @@ endif()
 if (BUILD_BENCHMARKS)
     include(${Open3D_3RDPARTY_DIR}/benchmark/benchmark.cmake)
     # benchmark and benchmark_main will automatically become available.
+endif()
+
+# Headless rendering
+if (NOT IOS)
+if (ENABLE_HEADLESS_RENDERING)
+    open3d_find_package_3rdparty_library(3rdparty_opengl
+        REQUIRED
+        PACKAGE OSMesa
+        INCLUDE_DIRS OSMESA_INCLUDE_DIR
+        LIBRARIES OSMESA_LIBRARY
+    )
+else()
+    open3d_find_package_3rdparty_library(3rdparty_opengl
+        PACKAGE OpenGL
+        TARGETS OpenGL::GL
+    )
+endif()
+list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS Open3D::3rdparty_opengl)
 endif()
 
 # imgui
@@ -1391,6 +1414,7 @@ if(BUILD_GUI)
 endif()
 
 # Headless rendering
+if (NOT IOS)
 if (ENABLE_HEADLESS_RENDERING)
     open3d_find_package_3rdparty_library(3rdparty_opengl
         REQUIRED
@@ -1406,7 +1430,7 @@ else()
     set(USE_SYSTEM_OPENGL ON)
 endif()
 list(APPEND Open3D_3RDPARTY_HEADER_TARGETS_FROM_SYSTEM Open3D::3rdparty_opengl)
-
+endif()
 # CPU Rendering
 if(BUILD_GUI AND UNIX AND NOT APPLE)
     include(FetchContent)
@@ -1425,6 +1449,7 @@ if(BUILD_GUI AND UNIX AND NOT APPLE)
     message(STATUS "MESA_CPU_GL_LIBRARY: ${MESA_CPU_GL_LIBRARY}")
 endif()
 
+if (NOT IOS)
 # RPC interface
 # zeromq
 if(USE_SYSTEM_ZEROMQ)
@@ -1617,6 +1642,23 @@ else() # if(OPEN3D_USE_ONEAPI_PACKAGES)
     else()
         list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS_FROM_SYSTEM Open3D::3rdparty_tbb)
     endif()
+include(${Open3D_3RDPARTY_DIR}/msgpack/msgpack_build.cmake)
+open3d_import_3rdparty_library(3rdparty_msgpack
+    INCLUDE_DIRS ${MSGPACK_INCLUDE_DIRS}
+    DEPENDS      ext_msgpack-c
+)
+list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS Open3D::3rdparty_msgpack)
+endif()
+
+# TBB
+include(${Open3D_3RDPARTY_DIR}/mkl/tbb.cmake)
+open3d_import_3rdparty_library(3rdparty_tbb
+    INCLUDE_DIRS ${STATIC_TBB_INCLUDE_DIR}
+    LIB_DIR      ${STATIC_TBB_LIB_DIR}
+    LIBRARIES    ${STATIC_TBB_LIBRARIES}
+    DEPENDS      ext_tbb
+)
+list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS Open3D::3rdparty_tbb)
 
     # parallelstl
     include(${Open3D_3RDPARTY_DIR}/parallelstl/parallelstl.cmake)
@@ -1628,37 +1670,25 @@ else() # if(OPEN3D_USE_ONEAPI_PACKAGES)
     )
     list(APPEND Open3D_3RDPARTY_PUBLIC_TARGETS_FROM_SYSTEM Open3D::3rdparty_parallelstl)
 
-    # MKL/BLAS
-    if(USE_BLAS)
-        if (USE_SYSTEM_BLAS)
-            find_package(BLAS)
-            find_package(LAPACK)
-            find_package(LAPACKE)
-            if(BLAS_FOUND AND LAPACK_FOUND AND LAPACKE_FOUND)
-                message(STATUS "System BLAS/LAPACK/LAPACKE found.")
-                list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS_FROM_SYSTEM
-                    ${BLAS_LIBRARIES}
-                    ${LAPACK_LIBRARIES}
-                    ${LAPACKE_LIBRARIES}
-                )
-            else()
-                message(STATUS "System BLAS/LAPACK/LAPACKE not found, setting USE_SYSTEM_BLAS=OFF.")
-                set(USE_SYSTEM_BLAS OFF)
-            endif()
-        endif()
-
-        if (NOT USE_SYSTEM_BLAS)
-            # Install gfortran first for compiling OpenBLAS/Lapack from source.
-            message(STATUS "Building OpenBLAS with LAPACK from source")
-
-            find_program(gfortran_bin "gfortran")
-            if (gfortran_bin)
-                message(STATUS "gfortran found at ${gfortran}")
-            else()
-                message(FATAL_ERROR "gfortran is required to compile LAPACK from source. "
-                                    "On Ubuntu, please install by `apt install gfortran`. "
-                                    "On macOS, please install by `brew install gfortran`. ")
-            endif()
+# MKL/BLAS
+if(USE_BLAS)
+    find_package(BLAS)
+    find_package(LAPACK)
+    find_package(LAPACKE)
+    if(BLAS_FOUND AND LAPACK_FOUND AND LAPACKE_FOUND)
+        message(STATUS "Using system BLAS/LAPACK")
+        # OpenBLAS/LAPACK/LAPACKE are shared libraries. This is uncommon for
+        # Open3D. When building with this option, the Python wheel is less
+        # portable as it depends on the external shared libraries.
+        list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS
+            ${BLAS_LIBRARIES}
+            ${LAPACK_LIBRARIES}
+            ${LAPACKE_LIBRARIES}
+        )
+    else()
+        # Install gfortran first for compiling OpenBLAS/Lapack from source.
+        message(STATUS "Building OpenBLAS with LAPACK from source")
+        set(BLAS_BUILD_FROM_SOURCE ON)
 
             include(${Open3D_3RDPARTY_DIR}/openblas/openblas.cmake)
             open3d_import_3rdparty_library(3rdparty_blas

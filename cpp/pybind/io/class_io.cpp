@@ -22,7 +22,10 @@
 #include "open3d/io/PoseGraphIO.h"
 #include "open3d/io/TriangleMeshIO.h"
 #include "open3d/io/VoxelGridIO.h"
+#include <TargetConditionals.h>
+#if !TARGET_OS_IOS
 #include "open3d/visualization/rendering/Model.h"
+#endif
 #include "pybind/docstring.h"
 #include "pybind/io/io.h"
 
@@ -280,6 +283,7 @@ void pybind_class_io(py::module &m_io) {
     docstring::FunctionDocInject(m_io, "write_triangle_mesh",
                                  map_shared_argument_docstrings);
 
+#if !TARGET_OS_IOS
     // open3d::visualization::rendering::TriangleMeshModel (Model.h)
     m_io.def(
             "read_triangle_model",
@@ -296,6 +300,7 @@ void pybind_class_io(py::module &m_io) {
             "filename"_a, "print_progress"_a = false);
     docstring::FunctionDocInject(m_io, "read_triangle_model",
                                  map_shared_argument_docstrings);
+#endif
 
     // open3d::geometry::VoxelGrid
     m_io.def(
