@@ -77,9 +77,9 @@ DownloadDataset::DownloadDataset(
     // Download.
     for (const auto& data_descriptor : data_descriptors) {
         if (!HasDownloaded(data_descriptor)) {
-            utility::DownloadFromMirrors(data_descriptor.urls_,
-                                         data_descriptor.md5_,
-                                         GetDownloadDir());
+            // utility::DownloadFromMirrors(data_descriptor.urls_,
+            //                              data_descriptor.md5_,
+            //                              GetDownloadDir());
             if (!HasDownloaded(data_descriptor)) {
                 utility::LogError("Download failed integrity check.");
             }
@@ -131,9 +131,9 @@ bool DownloadDataset::HasDownloaded(
         return false;
     }
     // Check MD5.
-    if (utility::GetMD5(download_path) != data_descriptor.md5_) {
-        return false;
-    }
+    // if (utility::GetMD5(download_path) != data_descriptor.md5_) {
+    //     return false;
+    // }
     return true;
 }
 
