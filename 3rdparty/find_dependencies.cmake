@@ -1450,66 +1450,66 @@ if(BUILD_GUI AND UNIX AND NOT APPLE)
 endif()
 
 if (NOT IOS)
-# RPC interface
-# zeromq
-if(USE_SYSTEM_ZEROMQ)
-    open3d_pkg_config_3rdparty_library(3rdparty_zeromq SEARCH_ARGS libzmq)
-    if(NOT 3rdparty_zeromq_FOUND)
-        set(USE_USE_SYSTEM_ZEROMQ OFF)
-    endif()
-endif()
-if(NOT USE_SYSTEM_ZEROMQ)
-    include(${Open3D_3RDPARTY_DIR}/zeromq/zeromq_build.cmake)
-    open3d_import_3rdparty_library(3rdparty_zeromq
-        HIDDEN
-        INCLUDE_DIRS ${ZEROMQ_INCLUDE_DIRS}
-        LIB_DIR      ${ZEROMQ_LIB_DIR}
-        LIBRARIES    ${ZEROMQ_LIBRARIES}
-        DEPENDS      ext_zeromq ext_cppzmq
-    )
-    list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS_FROM_CUSTOM Open3D::3rdparty_zeromq)
-    if(DEFINED ZEROMQ_ADDITIONAL_LIBS)
-        list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS_FROM_CUSTOM ${ZEROMQ_ADDITIONAL_LIBS})
-    endif()
-else()
-    list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS_FROM_SYSTEM Open3D::3rdparty_zeromq)
-    if(DEFINED ZEROMQ_ADDITIONAL_LIBS)
-        list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS_FROM_SYSTEM ${ZEROMQ_ADDITIONAL_LIBS})
-    endif()
-endif()
-
-# msgpack
-if(USE_SYSTEM_MSGPACK)
-    open3d_find_package_3rdparty_library(3rdparty_msgpack
-        PACKAGE msgpack-cxx
-        TARGETS msgpack-cxx
-    )
-    if(NOT 3rdparty_msgpack_FOUND)
-        open3d_find_package_3rdparty_library(3rdparty_msgpack
-            PACKAGE msgpack
-            TARGETS msgpackc
-        )
-    endif()
-    if(NOT 3rdparty_msgpack_FOUND)
-        open3d_pkg_config_3rdparty_library(3rdparty_msgpack
-            SEARCH_ARGS msgpack
-        )
-        if(NOT 3rdparty_msgpack_FOUND)
-            set(USE_SYSTEM_MSGPACK OFF)
+    # RPC interface
+    # zeromq
+    if(USE_SYSTEM_ZEROMQ)
+        open3d_pkg_config_3rdparty_library(3rdparty_zeromq SEARCH_ARGS libzmq)
+        if(NOT 3rdparty_zeromq_FOUND)
+            set(USE_USE_SYSTEM_ZEROMQ OFF)
         endif()
     endif()
-endif()
-if(NOT USE_SYSTEM_MSGPACK)
-    include(${Open3D_3RDPARTY_DIR}/msgpack/msgpack_build.cmake)
-    open3d_import_3rdparty_library(3rdparty_msgpack
-        INCLUDE_DIRS ${MSGPACK_INCLUDE_DIRS}
-        DEPENDS      ext_msgpack-c
-    )
-    list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS_FROM_CUSTOM Open3D::3rdparty_msgpack)
-else()
-    list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS_FROM_SYSTEM Open3D::3rdparty_msgpack)
-endif()
+    if(NOT USE_SYSTEM_ZEROMQ)
+        include(${Open3D_3RDPARTY_DIR}/zeromq/zeromq_build.cmake)
+        open3d_import_3rdparty_library(3rdparty_zeromq
+            HIDDEN
+            INCLUDE_DIRS ${ZEROMQ_INCLUDE_DIRS}
+            LIB_DIR      ${ZEROMQ_LIB_DIR}
+            LIBRARIES    ${ZEROMQ_LIBRARIES}
+            DEPENDS      ext_zeromq ext_cppzmq
+        )
+        list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS_FROM_CUSTOM Open3D::3rdparty_zeromq)
+        if(DEFINED ZEROMQ_ADDITIONAL_LIBS)
+            list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS_FROM_CUSTOM ${ZEROMQ_ADDITIONAL_LIBS})
+        endif()
+    else()
+        list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS_FROM_SYSTEM Open3D::3rdparty_zeromq)
+        if(DEFINED ZEROMQ_ADDITIONAL_LIBS)
+            list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS_FROM_SYSTEM ${ZEROMQ_ADDITIONAL_LIBS})
+        endif()
+    endif()
 
+    # msgpack
+    if(USE_SYSTEM_MSGPACK)
+        open3d_find_package_3rdparty_library(3rdparty_msgpack
+            PACKAGE msgpack-cxx
+            TARGETS msgpack-cxx
+        )
+        if(NOT 3rdparty_msgpack_FOUND)
+            open3d_find_package_3rdparty_library(3rdparty_msgpack
+                PACKAGE msgpack
+                TARGETS msgpackc
+            )
+        endif()
+        if(NOT 3rdparty_msgpack_FOUND)
+            open3d_pkg_config_3rdparty_library(3rdparty_msgpack
+                SEARCH_ARGS msgpack
+            )
+            if(NOT 3rdparty_msgpack_FOUND)
+                set(USE_SYSTEM_MSGPACK OFF)
+            endif()
+        endif()
+    endif()
+    if(NOT USE_SYSTEM_MSGPACK)
+        include(${Open3D_3RDPARTY_DIR}/msgpack/msgpack_build.cmake)
+        open3d_import_3rdparty_library(3rdparty_msgpack
+            INCLUDE_DIRS ${MSGPACK_INCLUDE_DIRS}
+            DEPENDS      ext_msgpack-c
+        )
+        list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS_FROM_CUSTOM Open3D::3rdparty_msgpack)
+    else()
+        list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS_FROM_SYSTEM Open3D::3rdparty_msgpack)
+    endif()
+endif()
 # VTK
 if(USE_SYSTEM_VTK)
     open3d_find_package_3rdparty_library(3rdparty_vtk
@@ -1642,23 +1642,6 @@ else() # if(OPEN3D_USE_ONEAPI_PACKAGES)
     else()
         list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS_FROM_SYSTEM Open3D::3rdparty_tbb)
     endif()
-include(${Open3D_3RDPARTY_DIR}/msgpack/msgpack_build.cmake)
-open3d_import_3rdparty_library(3rdparty_msgpack
-    INCLUDE_DIRS ${MSGPACK_INCLUDE_DIRS}
-    DEPENDS      ext_msgpack-c
-)
-list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS Open3D::3rdparty_msgpack)
-endif()
-
-# TBB
-include(${Open3D_3RDPARTY_DIR}/mkl/tbb.cmake)
-open3d_import_3rdparty_library(3rdparty_tbb
-    INCLUDE_DIRS ${STATIC_TBB_INCLUDE_DIR}
-    LIB_DIR      ${STATIC_TBB_LIB_DIR}
-    LIBRARIES    ${STATIC_TBB_LIBRARIES}
-    DEPENDS      ext_tbb
-)
-list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS Open3D::3rdparty_tbb)
 
     # parallelstl
     include(${Open3D_3RDPARTY_DIR}/parallelstl/parallelstl.cmake)
@@ -1670,25 +1653,37 @@ list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS Open3D::3rdparty_tbb)
     )
     list(APPEND Open3D_3RDPARTY_PUBLIC_TARGETS_FROM_SYSTEM Open3D::3rdparty_parallelstl)
 
-# MKL/BLAS
-if(USE_BLAS)
-    find_package(BLAS)
-    find_package(LAPACK)
-    find_package(LAPACKE)
-    if(BLAS_FOUND AND LAPACK_FOUND AND LAPACKE_FOUND)
-        message(STATUS "Using system BLAS/LAPACK")
-        # OpenBLAS/LAPACK/LAPACKE are shared libraries. This is uncommon for
-        # Open3D. When building with this option, the Python wheel is less
-        # portable as it depends on the external shared libraries.
-        list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS
-            ${BLAS_LIBRARIES}
-            ${LAPACK_LIBRARIES}
-            ${LAPACKE_LIBRARIES}
-        )
-    else()
-        # Install gfortran first for compiling OpenBLAS/Lapack from source.
-        message(STATUS "Building OpenBLAS with LAPACK from source")
-        set(BLAS_BUILD_FROM_SOURCE ON)
+    # MKL/BLAS
+    if(USE_BLAS)
+        if (USE_SYSTEM_BLAS)
+            find_package(BLAS)
+            find_package(LAPACK)
+            find_package(LAPACKE)
+            if(BLAS_FOUND AND LAPACK_FOUND AND LAPACKE_FOUND)
+                message(STATUS "System BLAS/LAPACK/LAPACKE found.")
+                list(APPEND Open3D_3RDPARTY_PRIVATE_TARGETS_FROM_SYSTEM
+                    ${BLAS_LIBRARIES}
+                    ${LAPACK_LIBRARIES}
+                    ${LAPACKE_LIBRARIES}
+                )
+            else()
+                message(STATUS "System BLAS/LAPACK/LAPACKE not found, setting USE_SYSTEM_BLAS=OFF.")
+                set(USE_SYSTEM_BLAS OFF)
+            endif()
+        endif()
+
+        if (NOT USE_SYSTEM_BLAS)
+            # Install gfortran first for compiling OpenBLAS/Lapack from source.
+            message(STATUS "Building OpenBLAS with LAPACK from source")
+
+            find_program(gfortran_bin "gfortran")
+            if (gfortran_bin)
+                message(STATUS "gfortran found at ${gfortran}")
+            else()
+                message(FATAL_ERROR "gfortran is required to compile LAPACK from source. "
+                                    "On Ubuntu, please install by `apt install gfortran`. "
+                                    "On macOS, please install by `brew install gfortran`. ")
+            endif()
 
             include(${Open3D_3RDPARTY_DIR}/openblas/openblas.cmake)
             open3d_import_3rdparty_library(3rdparty_blas

@@ -30,94 +30,94 @@ done
 cd -
 
 
-# JPEG
+# # JPEG
 
-xcodebuild -project build/turbojpeg/src/ext_turbojpeg-build/libjpeg-turbo.xcodeproj -target turbojpeg-static -configuration Release -sdk iphoneos -xcconfig $XCCONFIG
-xcodebuild -project build/turbojpeg/src/ext_turbojpeg-build/libjpeg-turbo.xcodeproj -target turbojpeg-static -configuration Release -sdk iphonesimulator -xcconfig $XCCONFIG
+# xcodebuild -project build/turbojpeg/src/ext_turbojpeg-build/libjpeg-turbo.xcodeproj -target turbojpeg-static -configuration Release -sdk iphoneos -xcconfig $XCCONFIG
+# xcodebuild -project build/turbojpeg/src/ext_turbojpeg-build/libjpeg-turbo.xcodeproj -target turbojpeg-static -configuration Release -sdk iphonesimulator -xcconfig $XCCONFIG
 
-rm -rf build/turbojpeg/src/ext_turbojpeg-build/JPEG.xcframework
+# rm -rf build/turbojpeg/src/ext_turbojpeg-build/JPEG.xcframework
 
-xcodebuild -create-xcframework \
-  -library build/turbojpeg/src/ext_turbojpeg-build/Release-iphoneos/libturbojpeg.a \
-  -library build/turbojpeg/src/ext_turbojpeg-build/Release-iphonesimulator/libturbojpeg.a \
-  -output build/turbojpeg/src/ext_turbojpeg-build/JPEG.xcframework
-
-
-# png
-
-xcodebuild -project build/libpng/src/ext_libpng-build/libpng.xcodeproj -target png_static -configuration Release -sdk iphoneos -xcconfig $XCCONFIG
-xcodebuild -project build/libpng/src/ext_libpng-build/libpng.xcodeproj -target png_static -configuration Release -sdk iphonesimulator -xcconfig $XCCONFIG
-
-rm -rf build/libpng/src/ext_libpng-build/png.xcframework
-
-xcodebuild -create-xcframework \
-  -library build/libpng/src/ext_libpng-build/Release-iphoneos/libpng16.a \
-  -library build/libpng/src/ext_libpng-build/Release-iphonesimulator/libpng16.a \
-  -output build/libpng/src/ext_libpng-build/png.xcframework
+# xcodebuild -create-xcframework \
+#   -library build/turbojpeg/src/ext_turbojpeg-build/Release-iphoneos/libturbojpeg.a \
+#   -library build/turbojpeg/src/ext_turbojpeg-build/Release-iphonesimulator/libturbojpeg.a \
+#   -output build/turbojpeg/src/ext_turbojpeg-build/JPEG.xcframework
 
 
-# jsoncpp
+# # png
 
-xcodebuild -project build/jsoncpp/src/ext_jsoncpp-build/jsoncpp.xcodeproj -target jsoncpp_static -configuration Release -sdk iphoneos -xcconfig $XCCONFIG
+# xcodebuild -project build/libpng/src/ext_libpng-build/libpng.xcodeproj -target png_static -configuration Release -sdk iphoneos -xcconfig $XCCONFIG
+# xcodebuild -project build/libpng/src/ext_libpng-build/libpng.xcodeproj -target png_static -configuration Release -sdk iphonesimulator -xcconfig $XCCONFIG
 
-rm -f build/jsoncpp/src/ext_jsoncpp-build/lib/libjsoncpp.a
-mv build/jsoncpp/src/ext_jsoncpp-build/lib/Release/libjsoncpp.a build/jsoncpp/src/ext_jsoncpp-build/lib
+# rm -rf build/libpng/src/ext_libpng-build/png.xcframework
 
-xcodebuild -project build/jsoncpp/src/ext_jsoncpp-build/jsoncpp.xcodeproj -target jsoncpp_static -configuration Release -sdk iphonesimulator -xcconfig $XCCONFIG
-
-rm -rf build/jsoncpp/src/ext_jsoncpp-build/jsoncpp.xcframework
-
-xcodebuild -create-xcframework \
-  -library build/jsoncpp/src/ext_jsoncpp-build/lib/libjsoncpp.a \
-  -library build/jsoncpp/src/ext_jsoncpp-build/lib/Release/libjsoncpp.a \
-  -output build/jsoncpp/src/ext_jsoncpp-build/jsoncpp.xcframework
+# xcodebuild -create-xcframework \
+#   -library build/libpng/src/ext_libpng-build/Release-iphoneos/libpng16.a \
+#   -library build/libpng/src/ext_libpng-build/Release-iphonesimulator/libpng16.a \
+#   -output build/libpng/src/ext_libpng-build/png.xcframework
 
 
-# Faiss
+# # jsoncpp
 
-# xcodebuild -project build/faiss/src/ext_faiss-build/faiss.xcodeproj -target faiss -configuration Release -sdk iphoneos -xcconfig $XCCONFIG
-# xcodebuild -project build/faiss/src/ext_faiss-build/faiss.xcodeproj -target faiss -configuration Release -sdk iphonesimulator -xcconfig $XCCONFIG
+# xcodebuild -project build/jsoncpp/src/ext_jsoncpp-build/jsoncpp.xcodeproj -target jsoncpp_static -configuration Release -sdk iphoneos -xcconfig $XCCONFIG
 
-# rm -rf build/faiss/src/ext_faiss-build/Faiss.xcframework
+# rm -f build/jsoncpp/src/ext_jsoncpp-build/lib/libjsoncpp.a
+# mv build/jsoncpp/src/ext_jsoncpp-build/lib/Release/libjsoncpp.a build/jsoncpp/src/ext_jsoncpp-build/lib
 
-xcodebuild -create-xcframework \
-  -library build/faiss/src/ext_faiss-build/faiss/Release-iphoneos/libfaiss.a \
-  -library build/faiss/src/ext_faiss-build/faiss/Release-iphonesimulator/libfaiss.a \
-  -output build/faiss/src/ext_faiss-build/Faiss.xcframework
+# xcodebuild -project build/jsoncpp/src/ext_jsoncpp-build/jsoncpp.xcodeproj -target jsoncpp_static -configuration Release -sdk iphonesimulator -xcconfig $XCCONFIG
 
+# rm -rf build/jsoncpp/src/ext_jsoncpp-build/jsoncpp.xcframework
 
-# TBB
-
-xcodebuild -project build/tbb/src/ext_tbb-build/tbb.xcodeproj -target tbb_static -configuration Release -sdk iphoneos -xcconfig $XCCONFIG
-xcodebuild -project build/tbb/src/ext_tbb-build/tbb.xcodeproj -target tbb_static -configuration Release -sdk iphonesimulator -xcconfig $XCCONFIG
-
-rm -rf build/tbb/src/ext_tbb-build/TBB.xcframework
-
-xcodebuild -create-xcframework \
-  -library build/tbb/src/ext_tbb-build/Release-iphoneos/libtbb_static.a \
-  -library build/tbb/src/ext_tbb-build/Release-iphonesimulator/libtbb_static.a \
-  -output build/tbb/src/ext_tbb-build/TBB.xcframework
+# xcodebuild -create-xcframework \
+#   -library build/jsoncpp/src/ext_jsoncpp-build/lib/libjsoncpp.a \
+#   -library build/jsoncpp/src/ext_jsoncpp-build/lib/Release/libjsoncpp.a \
+#   -output build/jsoncpp/src/ext_jsoncpp-build/jsoncpp.xcframework
 
 
-# Assimp
+# # Faiss
 
-xcodebuild -project build/assimp/src/ext_assimp-build/Assimp.xcodeproj -target assimp -configuration Release -sdk iphoneos -xcconfig $XCCONFIG
-rm -f build/assimp/src/ext_assimp-build/code/Release-iphoneos/libassimp.a
-mkdir -p build/assimp/src/ext_assimp-build/code/Release-iphoneos/
-mv build/assimp/src/ext_assimp-build/lib/Release/libassimp.a build/assimp/src/ext_assimp-build/code/Release-iphoneos/
+# # xcodebuild -project build/faiss/src/ext_faiss-build/faiss.xcodeproj -target faiss -configuration Release -sdk iphoneos -xcconfig $XCCONFIG
+# # xcodebuild -project build/faiss/src/ext_faiss-build/faiss.xcodeproj -target faiss -configuration Release -sdk iphonesimulator -xcconfig $XCCONFIG
 
-xcodebuild -project build/assimp/src/ext_assimp-build/Assimp.xcodeproj -target assimp -configuration Release -sdk iphonesimulator -xcconfig $XCCONFIG
-rm -f build/assimp/src/ext_assimp-build/code/Release-iphonesimulator/libassimp.a
-mkdir -p build/assimp/src/ext_assimp-build/code/Release-iphonesimulator/
-mv build/assimp/src/ext_assimp-build/lib/Release/libassimp.a build/assimp/src/ext_assimp-build/code/Release-iphonesimulator/
+# # rm -rf build/faiss/src/ext_faiss-build/Faiss.xcframework
+
+# xcodebuild -create-xcframework \
+#   -library build/faiss/src/ext_faiss-build/faiss/Release-iphoneos/libfaiss.a \
+#   -library build/faiss/src/ext_faiss-build/faiss/Release-iphonesimulator/libfaiss.a \
+#   -output build/faiss/src/ext_faiss-build/Faiss.xcframework
 
 
-rm -rf build/assimp/lib/Assimp.xcframework
+# # TBB
 
-xcodebuild -create-xcframework \
-  -library build/assimp/src/ext_assimp-build/code/Release-iphoneos/libassimp.a \
-  -library build/assimp/src/ext_assimp-build/code/Release-iphonesimulator/libassimp.a \
-  -output build/assimp/lib/Assimp.xcframework
+# xcodebuild -project build/tbb/src/ext_tbb-build/tbb.xcodeproj -target tbb_static -configuration Release -sdk iphoneos -xcconfig $XCCONFIG
+# xcodebuild -project build/tbb/src/ext_tbb-build/tbb.xcodeproj -target tbb_static -configuration Release -sdk iphonesimulator -xcconfig $XCCONFIG
+
+# rm -rf build/tbb/src/ext_tbb-build/TBB.xcframework
+
+# xcodebuild -create-xcframework \
+#   -library build/tbb/src/ext_tbb-build/Release-iphoneos/libtbb_static.a \
+#   -library build/tbb/src/ext_tbb-build/Release-iphonesimulator/libtbb_static.a \
+#   -output build/tbb/src/ext_tbb-build/TBB.xcframework
+
+
+# # Assimp
+
+# xcodebuild -project build/assimp/src/ext_assimp-build/Assimp.xcodeproj -target assimp -configuration Release -sdk iphoneos -xcconfig $XCCONFIG
+# rm -f build/assimp/src/ext_assimp-build/code/Release-iphoneos/libassimp.a
+# mkdir -p build/assimp/src/ext_assimp-build/code/Release-iphoneos/
+# mv build/assimp/src/ext_assimp-build/lib/Release/libassimp.a build/assimp/src/ext_assimp-build/code/Release-iphoneos/
+
+# xcodebuild -project build/assimp/src/ext_assimp-build/Assimp.xcodeproj -target assimp -configuration Release -sdk iphonesimulator -xcconfig $XCCONFIG
+# rm -f build/assimp/src/ext_assimp-build/code/Release-iphonesimulator/libassimp.a
+# mkdir -p build/assimp/src/ext_assimp-build/code/Release-iphonesimulator/
+# mv build/assimp/src/ext_assimp-build/lib/Release/libassimp.a build/assimp/src/ext_assimp-build/code/Release-iphonesimulator/
+
+
+# rm -rf build/assimp/lib/Assimp.xcframework
+
+# xcodebuild -create-xcframework \
+#   -library build/assimp/src/ext_assimp-build/code/Release-iphoneos/libassimp.a \
+#   -library build/assimp/src/ext_assimp-build/code/Release-iphonesimulator/libassimp.a \
+#   -output build/assimp/lib/Assimp.xcframework
 
 # rm -rf build/assimp/lib/IrrXML.xcframework
 
